@@ -35,8 +35,9 @@ function updateZombie(z, dt) {
   const r = z.root, dx = player.x - r.position.x, dz = player.z - r.position.z, dist = Math.hypot(dx, dz);
   if (z.dead) {
     z.dead += dt;
-    updateZombieVisual(z.visual, dt, { dead: true });
-    r.position.y = groundY(r.position.x, r.position.z) - Math.max(0, z.dead - 9) * 0.25;
+    updateZombieVisual(z.visual, dt, { dead: true, ground: groundY, collide });
+    // Keep the root fixed while world-space ragdoll particles settle.
+    if (z.dead > 9) r.visible = false;
     if (z.dead > 12) placeZombie(z, 45);
     return;
   }
