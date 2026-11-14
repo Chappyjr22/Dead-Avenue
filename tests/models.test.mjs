@@ -116,3 +116,28 @@ test('joint limits correct reverse knee bends and eject hands from the torso',()
  const closest=r.names.Hips.p.clone().addScaledVector(torso,THREE.MathUtils.clamp(offset.dot(torso)/torso.lengthSq(),0,1));
  assert.ok(hand.p.distanceTo(closest)>=.17+hand.radius-1e-6);
 });
+
+test('hips limit lateral spread separately from forward bending and shoulders relax without a velocity kick',()=>{
+ const v=createZombieVisual(prepareZombieModel(city));
+ updateZombieVisual(v,.2,{speed:.8});updateZombieVisual(v,0,{dead:true});
+ const r=v.ragdoll,frame=r.frameQuaternion(r.names.Hips);
+ const side=new THREE.Vector3(1,0,0).applyQuaternion(frame);
+ const down=new THREE.Vector3(0,-1,0).applyQuaternion(frame);
+ for(const j of r.joints.filter(j=>j.leg)){
+  j.b.p.copy(j.a.p).addScaledVector(side,j.side*j.upper);
+  j.c.p.copy(j.b.p).addScaledVector(down,j.lower);
+ }
+ for(let i=0;i<30;i++)r.solveJoints();
+ for(const j of r.joints.filter(j=>j.leg)){
+  const outward=j.b.p.clone().sub(j.a.p).dot(side)*j.side;
+  assert.ok(outward<j.upper*.5,'thigh cannot remain in a sideways split');
+ }
+ const j=r.joints.find(j=>!j.leg);
+ j.b.p.copy(j.a.p).addScaledVector(side,j.side*j.upper);
+ j.c.p.copy(j.b.p).addScaledVector(down,j.lower);
+ j.b.previous.copy(j.b.p);j.c.previous.copy(j.c.p);
+ const before=j.b.p.clone().sub(j.a.p).dot(down);
+ r.relaxShoulders();
+ assert.ok(j.b.p.clone().sub(j.a.p).dot(down)>before,'arm gently lowers toward torso');
+ assert.ok(j.b.p.distanceTo(j.b.previous)<1e-8,'rest bias introduces no launch velocity');
+});

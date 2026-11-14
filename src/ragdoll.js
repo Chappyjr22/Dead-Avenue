@@ -96,7 +96,31 @@ export class ZombieRagdoll {
       const along=THREE.MathUtils.clamp((upper*upper-lower*lower+distance*distance)/(2*distance),0,upper);
       const height=Math.sqrt(Math.max(0,upper*upper-along*along));
       const target=a.p.clone().addScaledVector(line,along).addScaledVector(pole,height);
-      b.p.lerp(target,.6);
+      b.p.lerp(target,leg?.6:.25);
+      if(leg) {
+        // Abduction is narrower than forward/back hip swing. A circular cone
+        // alone allowed both thighs to spread almost horizontally.
+        const thigh=b.p.clone().sub(a.p);
+        const outward=thigh.dot(side)*j.side;
+        const limited=THREE.MathUtils.clamp(outward,-upper*.12,upper*Math.sin(28*Math.PI/180));
+        if(Math.abs(outward-limited)>.00001) {
+          const plane=thigh.clone().addScaledVector(side,-outward*j.side);
+          if(plane.lengthSq()<.00001)plane.copy(down);
+          plane.setLength(Math.sqrt(Math.max(0,upper*upper-limited*limited)));
+          const desired=a.p.clone().add(plane).addScaledVector(side,limited*j.side);
+          const shift=desired.sub(b.p).multiplyScalar(.8);b.p.add(shift);c.p.add(shift);
+        }
+      }
+    }
+  }
+  relaxShoulders() {
+    // A weak rest bias once per timestep, not a hard target on every solver pass.
+    const frame=this.frameQuaternion(this.names.Hips);
+    for(const j of this.joints) if(!j.leg) {
+      const rest=new THREE.Vector3(j.side*.28,-1,.08).normalize().applyQuaternion(frame);
+      const target=j.a.p.clone().addScaledVector(rest,j.upper);
+      const shift=target.sub(j.b.p).multiplyScalar(1-Math.exp(-STEP*.9));
+      for(const p of [j.b,j.c]){p.p.add(shift);p.previous.add(shift);}
     }
   }
   separateTorso() {
@@ -123,6 +147,7 @@ export class ZombieRagdoll {
         delta.subVectors(p.p,p.previous).multiplyScalar(.985);
         p.previous.copy(p.p);p.p.add(delta);p.p.y -= 9.81*STEP*STEP;
       }
+      this.relaxShoulders();
       for (let pass=0;pass<8;pass++) {
         for (const {a,b,min,max} of this.links) {
           delta.subVectors(b.p,a.p);const length=delta.length();
