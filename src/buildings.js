@@ -1,7 +1,7 @@
 // Facades and building shells.
 import * as THREE from 'three';
 import { rnd, rr, ri, pick, col } from './util.js';
-import { WALL_COLOURS, TRIM_COLOURS, AWNING_COLOURS } from './data.js';
+import { WALL_COLOURS, TRIM_COLOURS, AWNING_COLOURS, SHOP_SIGNS, SHOP_TYPES } from './data.js';
 import { B, obox, fb, fq, _c, UP } from './batch.js';
 import { G, FH } from './world.js';
 import { shopInterior } from './interiors.js';
@@ -42,7 +42,7 @@ function facade(F, width, floors, st, detail, shop) {
       fq(B.win, F, k * bw + pw / 2, (k + 1) * bw - pw / 2, 0.65, G - 1.0, -0.3, 0, 0);
     }
     fb(B.plain, F, d0, d1, 2.6, G - 1.0, -0.36, -0.26, st.band);
-    fq(B.sign, F, mid - 2.7, mid + 2.7, G - 0.96, G - 0.14, 0.115, ri(0, 1), ri(0, 7));
+    { const si = SHOP_SIGNS.indexOf(pick(shop.signs)); fq(B.sign, F, mid - 2.7, mid + 2.7, G - 0.96, G - 0.14, 0.115, si % 2, 7 - Math.floor(si / 2)); }
     const L = new THREE.Vector3().copy(F.u).multiplyScalar(Math.cos(1.25)).addScaledVector(F.n, -Math.sin(1.25)), Ln = new THREE.Vector3().crossVectors(L, UP); // door left ajar
     _c.copy(F.p0).addScaledVector(F.u, d0 + 0.04).addScaledVector(F.n, -0.3).addScaledVector(L, 0.5); _c.y = 0.18 + 1.2;
     obox(B.plain, _c, L, UP, Ln, 1.0, 2.38, 0.05, col(0x24302a));
@@ -95,9 +95,9 @@ function building(x0, x1, z0, z1, faces, detail, shop, block) {
   for (const f of faces) {
     const n = new THREE.Vector3(f[0], 0, f[1]), u = new THREE.Vector3(n.z, 0, -n.x);
     const p0 = new THREE.Vector3(f[0] < 0 ? x0 : f[0] > 0 ? x1 : (f[1] < 0 ? x1 : x0), 0, f[1] < 0 ? z0 : f[1] > 0 ? z1 : (f[0] < 0 ? z0 : z1));
-    const F = { p0, u, n }, isShop = shop && f[0] !== 0;
-    H = facade(F, f[0] ? z1 - z0 : x1 - x0, floors, st, detail, isShop);
-    if (isShop) shopInterior(F, z1 - z0, lastDoor, block);
+    const F = { p0, u, n }, type = shop && f[0] !== 0 ? pick(SHOP_TYPES) : null;
+    H = facade(F, f[0] ? z1 - z0 : x1 - x0, floors, st, detail, type);
+    if (type) shopInterior(F, z1 - z0, lastDoor, block, type);
   }
   const roof = H - 0.7; // solid core behind the facades, plus the party walls
   const base = shop ? 3.62 : 0; _c.set((x0 + x1) / 2, (roof + base) / 2, (z0 + z1) / 2); obox(B.wall, _c, new THREE.Vector3(1, 0, 0), UP, new THREE.Vector3(0, 0, 1), x1 - x0 - 0.9, roof - base, z1 - z0 - 0.02, st.wall2.clone().multiplyScalar(0.8));

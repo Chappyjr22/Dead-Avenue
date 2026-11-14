@@ -30,3 +30,14 @@ export const ZOMBIE_OUTFITS = [
 
 // Ammunition.
 export const MAG_SIZE = 12, START_SPARE = 24, AMMO_BOX = 12;
+
+// Shop types: the sign over the door and the interior are both chosen from one of these.
+export const SHOP_TYPES = [
+  { name: 'grocery', signs: ['LIBERTY DELI', 'CORNER BODEGA', 'SAL’S PIZZA'], goods: [0xb03a2e, 0xd4a82a, 0x2e5fa8, 0x3f8a4a, 0xd8d4c8, 0xc8642a, 0x7a3a8a, 0x2a8a8a], fill: 0.45, chillers: true, wall: [0x9a9484, 0x8a9690, 0xa09078] },
+  { name: 'pharmacy', signs: ['24 HR PHARMACY', 'NAILS'], goods: [0xe8e8e2, 0xd8e4ec, 0xb8d4e4, 0xc4e0cc, 0xf0f0ea, 0x8ab4cc], fill: 0.5, chillers: false, wall: [0xb4b8b4, 0xa8b4bc, 0xb8c0b0] },
+  { name: 'hardware', signs: ['HARDWARE', 'ELECTRONICS'], goods: [0xc8642a, 0xd4a82a, 0x5a5a58, 0x2e5fa8, 0x8a2a22, 0x3a3a3a, 0x7a7a74], fill: 0.35, chillers: false, wall: [0x7a7872, 0x8a8478, 0x6e7478] },
+  { name: 'liquor', signs: ['WINE & LIQUOR'], goods: [0x1f4a2a, 0x2c5a30, 0xb07a1e, 0x8a5a24, 0x5a3418, 0x3a2a1c, 0xc89a3a], fill: 0.5, chillers: true, wall: [0x6a5a48, 0x5a4a3c, 0x4a4a42] },
+  { name: 'books', signs: ['USED BOOKS', 'TAILOR', 'PAWN & LOAN'], goods: [0x7a2a2a, 0x2a4a6a, 0x4a5a3a, 0x8a6a3a, 0x5a3a5a, 0xc8b88a, 0x3a3a48], fill: 0.7, chillers: false, wall: [0x8a7a60, 0x7a6a56, 0x6a6458] },
+  { name: 'cafe', signs: ['COFFEE', 'DINER', 'FLOWERS'], goods: [0x6a4028, 0xd8c8a8, 0xb03a2e, 0x3f8a4a, 0xd4a82a, 0xe0d8c8], fill: 0.3, chillers: true, wall: [0xa09078, 0x9a8c70, 0x8a9690] },
+  { name: 'barber', signs: ['BARBER', 'LAUNDROMAT'], goods: [0x2e5fa8, 0xb03a2e, 0xd8d4c8, 0x2a8a8a, 0x3a3a48], fill: 0.2, chillers: false, wall: [0x8a9690, 0x9a9a92, 0x7a8890] },
+];

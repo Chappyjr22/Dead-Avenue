@@ -7,7 +7,7 @@ import { CAR_COLOURS } from './data.js';
 import { scene } from './render.js';
 import { mkCanvas, wallMat, stoneMat, walkMat, roadMat, plainMat, intMat, tileFloorMat, ironMat, winMat, signMat } from './textures.js';
 import { Batch, B, obox, _m, _c, UP, WHITE, X3, Z3, unitBox, unitQuad } from './batch.js';
-import { PX, PZ, OX, OZ, BOUND_X, BOUND_Z, AVES, STS, addCircle, groundY, insideBuilding } from './world.js';
+import { PX, PZ, OX, OZ, BOUND_X, BOUND_Z, AVES, STS, addCircle, groundY, insideBuilding, rooms } from './world.js';
 import { WALLS, towerSpots } from './buildings.js';
 
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400).rotateX(-Math.PI / 2), roadMat);
@@ -101,6 +101,7 @@ lampB.build(lampGeometry(), ironMat); sigB.build(signalGeometry(), ironMat);
       const hz = cz + rr(-30, 30); yawM(cx + side * 30.6, hz, rnd() * 6); hyd.add(_m, col(0x8a2a1e)); addCircle(cx + side * 30.6, hz, 0.25, 0.8);
       for (let k = 0; k < 5; k++) { // heaps of bin bags against the buildings and at the kerb
         const bx = cx + side * (rnd() < 0.5 ? 28.3 : 30.9), bz = cz + rr(-42, 42), n = ri(2, 7);
+        if (rooms.some(R => Math.abs(bx - R.fx) < 4 && bz > R.dz0 - 1.5 && bz < R.dz1 + 1.5)) continue; // keep shop doorways clear
         for (let b = 0; b < n; b++) { const s = rr(0.7, 1.3); _m.compose(new THREE.Vector3(bx + rr(-0.6, 0.6), 0.18 + (b > 3 ? 0.3 : 0), bz + rr(-1.1, 1.1)), new THREE.Quaternion().setFromAxisAngle(UP, rnd() * 6), new THREE.Vector3(s, s * rr(0.8, 1.1), s)); bag.add(_m, pick([0x0c0c0d, 0x101112, 0x1a1a1a, 0x2a2c2a].map(col))); }
         addCircle(bx, bz, 0.7, 0.7);
       }
