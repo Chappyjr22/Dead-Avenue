@@ -154,7 +154,7 @@ function fire() {
   for (const z of zombies) if (!z.dead && Math.hypot(z.root.position.x - player.x, z.root.position.z - player.z) < 70) z.alert = Math.max(z.alert, 9);
   if (best) {
     best.hp -= best.hitY > 1.5 ? 3 : 1; best.hitT = 0.25; hitZombieVisual(best.visual); best.alert = 12; sfx.thud(0.5, 0);
-    if (best.hp <= 0) { best.visual.deathImpulse = d.clone(); best.visual.hitHeight = best.hitY; best.dead = 0.001; best.path = []; best.navPending = null; player.kills++; $('kills').textContent = player.kills; }
+    if (best.hp <= 0) { best.dead = 0.001; best.path = []; best.navPending = null; player.kills++; $('kills').textContent = player.kills; }
   }
 }
 function reload() { if (player.reloading > 0 || player.healing > 0 || player.ammo === MAG_SIZE || player.spare <= 0 || game.dead) return; aimWanted = sprintWanted = shotQueued = false; player.reloading = 1.25; sfx.reload(); sfx.voice('reload'); }
