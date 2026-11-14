@@ -82,3 +82,18 @@ test('ragdolls settle above terrain, retain limb lengths, respect obstacles and 
  const fresh=createZombieVisual(model);resetZombieVisual(fresh);
  for(let i=0;i<v.rest.length;i++) assert.ok(v.rest[i].bone.position.distanceTo(fresh.rest[i].bone.position)<1e-5,'respawn restores idle offsets');
 });
+
+test('ragdolls tip fully onto the ground for front, back and side hits',()=>{
+ const model=prepareZombieModel(city);
+ for(let n=0;n<4;n++){
+  const v=createZombieVisual(model);
+  updateZombieVisual(v,.15+n*.2,{speed:.8});
+  v.deathImpulse=new THREE.Vector3(Math.sin(n*Math.PI/2),0,Math.cos(n*Math.PI/2));
+  for(let i=0;i<360;i++)updateZombieVisual(v,1/60,{dead:true});
+  const {Hips,Spine2,Head}=v.ragdoll.names;
+  assert.ok(Hips.p.y<.3 && Spine2.p.y<.3 && Head.p.y<.35,'torso rests on ground rather than kneeling');
+  const torso=Spine2.p.clone().sub(Hips.p).normalize();
+  assert.ok(Math.abs(torso.y)<.35,'spine settles approximately horizontal');
+  assert.ok(v.ragdoll.sleeping);
+ }
+});

@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 const STEP = 1 / 60;
 const delta = new THREE.Vector3(), direction = new THREE.Vector3();
+const basis = new THREE.Matrix4(), lateral = new THREE.Vector3(), up = new THREE.Vector3(), forward = new THREE.Vector3();
 const rotation = new THREE.Quaternion(), parentRotation = new THREE.Quaternion();
 export class ZombieRagdoll {
   constructor(body, impulse = new THREE.Vector3(0, 0, -1), hitHeight = 1.2) {
@@ -16,6 +17,7 @@ export class ZombieRagdoll {
       const p = bone.getWorldPosition(new THREE.Vector3());
       const radius = /Head/.test(name) ? .14 : /Hips|Spine/.test(name) ? .13 : /Hand/.test(name) ? .10 : .075;
       const point = { bone, name, p, previous: p.clone(), radius,
+        mass: /Hips|Spine/.test(name) ? 3 : /Head|UpLeg/.test(name) ? 1.5 : 1,
         worldQ: bone.getWorldQuaternion(new THREE.Quaternion()), child: null };
       this.points.push(point); map.set(bone, point);
     });
@@ -34,6 +36,12 @@ export class ZombieRagdoll {
     }
     // Brace the trunk and pelvis as volumes rather than a floppy chain.
     const names = Object.fromEntries(this.points.map(p => [p.name, p]));
+    this.names = names;
+    // Keep chest and hips oriented by both axes, including roll about the spine.
+    for (const [name,left,right,top] of [['Hips','LeftUpLeg','RightUpLeg','Spine'],['Spine2','LeftArm','RightArm','Neck']]) {
+      const p=names[name];p.frame={left:names[left],right:names[right],top:names[top]};
+      p.frameOffset=this.frameQuaternion(p).invert().multiply(p.worldQ);
+    }
     for (const group of [
       ['Hips', 'LeftUpLeg', 'RightUpLeg', 'Spine', 'Spine1', 'Spine2'],
       ['Spine1', 'Spine2', 'Neck', 'LeftShoulder', 'RightShoulder', 'LeftArm', 'RightArm']
@@ -43,9 +51,17 @@ export class ZombieRagdoll {
     for (const side of ['Left', 'Right']) for (const chain of [['Arm','ForeArm','Hand'],['UpLeg','Leg','Foot']]) {
       const [a,b,c] = chain.map(n => names[side+n]);
       const length = a.p.distanceTo(b.p) + b.p.distanceTo(c.p);
-      this.links.push({a,b:c,min:length*.30,max:length*.985});
+      this.links.push({a,b:c,min:length*(chain[0]==='UpLeg' ? .78 : .38),max:length*.995});
     }
     for (const p of this.points) if (p.child) p.axis = p.child.p.clone().sub(p.p).normalize();
+  }
+  frameQuaternion(p) {
+    up.subVectors(p.frame.top.p,p.p).normalize();
+    lateral.subVectors(p.frame.left.p,p.frame.right.p);
+    lateral.addScaledVector(up,-lateral.dot(up)).normalize();
+    forward.crossVectors(lateral,up).normalize();
+    basis.makeBasis(lateral,up,forward);
+    return new THREE.Quaternion().setFromRotationMatrix(basis);
   }
   link(a,b) {
     if (!a || !b || this.links.some(l => (l.a===a && l.b===b)||(l.a===b && l.b===a))) return;
@@ -65,19 +81,25 @@ export class ZombieRagdoll {
           delta.subVectors(b.p,a.p);const length=delta.length();
           if (length<1e-6) continue;
           const target=THREE.MathUtils.clamp(length,min,max);
-          delta.multiplyScalar((length-target)/length*.5);
-          a.p.add(delta);b.p.sub(delta);
+          delta.multiplyScalar((length-target)/length);
+          const wa=1/a.mass, wb=1/b.mass;
+          a.p.addScaledVector(delta,wa/(wa+wb));b.p.addScaledVector(delta,-wb/(wa+wb));
         }
         for (const p of this.points) {
           collide(p.p,p.radius);
           const floor=ground(p.p.x,p.p.z)+p.radius;
           if (p.p.y<floor) {
             p.p.y=floor;
-            p.previous.x += (p.p.x-p.previous.x)*.35;
-            p.previous.z += (p.p.z-p.previous.z)*.35;
-            p.previous.y=p.p.y;
+
           }
         }
+      }
+      // Friction belongs once per timestep, not once per solver iteration.
+      // Applying it eight times pinned the hands/feet and left bodies kneeling.
+      for (const p of this.points) if(p.p.y<=ground(p.p.x,p.p.z)+p.radius+.002) {
+        p.previous.x += (p.p.x-p.previous.x)*.14;
+        p.previous.z += (p.p.z-p.previous.z)*.14;
+        p.previous.y=p.p.y;
       }
       const movement = Math.max(...this.points.map(p=>p.p.distanceToSquared(p.previous)));
       this.quiet = movement < .000004 ? this.quiet+STEP : 0;
@@ -93,7 +115,8 @@ export class ZombieRagdoll {
       p.bone.position.copy(p.p);parent.worldToLocal(p.bone.position);
       if (p.child) {
         direction.subVectors(p.child.p,p.p).normalize();
-        rotation.setFromUnitVectors(p.axis,direction).multiply(p.worldQ);
+        if(p.frame) rotation.copy(this.frameQuaternion(p)).multiply(p.frameOffset);
+        else rotation.setFromUnitVectors(p.axis,direction).multiply(p.worldQ);
         parent.getWorldQuaternion(parentRotation).invert();
         p.bone.quaternion.copy(parentRotation.multiply(rotation));
       }
