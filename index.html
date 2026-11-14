@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body{margin:0}[hidden]{display:none!important}</style>
+<!-- page:start -->
+<title>Dead Avenue</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: full-bleed 3D view; HUD pinned to the corners like stencilled street signage. */
+:root {
+  color-scheme: dark;
+  --ash: #0d0b0a;
+  --dusk: #e9c9a4;
+  --ember: #f08a3c;
+  --blood: #b3261e;
+  --smoke: rgba(13, 11, 10, 0.62);
+  --line: rgba(233, 201, 164, 0.28);
+  --display: "Big Shoulders Display", "Arial Narrow", Impact, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+html, body { height: 100%; }
+body {
+  background: var(--ash); color: var(--dusk); font-family: var(--mono);
+  overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
+}
+#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.hud {
+  position: fixed; z-index: 3; pointer-events: none;
+  font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+}
+#vitals {
+  left: max(16px, env(safe-area-inset-left, 0px));
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column; gap: 6px; width: min(200px, 44vw);
+}
+#hpbar { height: 6px; background: var(--smoke); border: 1px solid var(--line); }
+#hpfill { height: 100%; width: 100%; background: var(--ember); transition: width 0.15s; }
+#ammo {
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  text-align: right; font-family: var(--display); font-weight: 800; font-size: 34px; line-height: 1;
+  letter-spacing: 0.02em; font-variant-numeric: tabular-nums;
+}
+#ammo small { display: block; font-family: var(--mono); font-weight: 400; font-size: 11px; letter-spacing: 0.08em; opacity: 0.75; margin-top: 4px; }
+#tally {
+  left: max(16px, env(safe-area-inset-left, 0px));
+  top: calc(16px + env(safe-area-inset-top, 0px));
+  font-variant-numeric: tabular-nums; opacity: 0.85;
+}
+#cross { left: 50%; top: 50%; width: 18px; height: 18px; transform: translate(-50%, -50%); }
+#cross::before, #cross::after { content: ""; position: absolute; background: var(--dusk); opacity: 0.8; }
+#cross::before { left: 8px; top: 0; width: 2px; height: 18px; clip-path: polygon(0 0, 100% 0, 100% 30%, 0 30%, 0 70%, 100% 70%, 100% 100%, 0 100%); }
+#cross::after { top: 8px; left: 0; height: 2px; width: 18px; clip-path: polygon(0 0, 30% 0, 30% 100%, 0 100%, 0 0, 70% 0, 70% 100%, 100% 100%, 100% 0); }
+#touch { position: fixed; inset: 0; z-index: 2; }
+#stick {
+  position: fixed; z-index: 3; width: 96px; height: 96px; border-radius: 50%;
+  border: 1px solid var(--line); background: var(--smoke); pointer-events: none;
+}
+#stick i { position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; margin: -20px; border-radius: 50%; background: var(--dusk); opacity: 0.6; }
+.tbtn {
+  position: fixed; z-index: 4; border-radius: 50%; border: 1px solid var(--line); background: var(--smoke);
+  color: var(--dusk); font-family: var(--display); font-weight: 800; letter-spacing: 0.06em; font-size: 15px;
+  touch-action: none;
+}
+#fire { width: 84px; height: 84px; right: max(20px, env(safe-area-inset-right, 0px)); bottom: calc(84px + env(safe-area-inset-bottom, 0px)); border-color: var(--ember); }
+#reload { width: 60px; height: 60px; right: calc(max(20px, env(safe-area-inset-right, 0px)) + 96px); bottom: calc(72px + env(safe-area-inset-bottom, 0px)); font-size: 12px; }
+#veil {
+  position: fixed; inset: 0; z-index: 5; display: flex; align-items: flex-end;
+  padding-block: 32px; padding-left: max(24px, env(safe-area-inset-left, 0px)); padding-right: max(24px, env(safe-area-inset-right, 0px));
+  background: linear-gradient(to top, rgba(13, 11, 10, 0.92) 0%, rgba(13, 11, 10, 0.55) 45%, rgba(13, 11, 10, 0) 80%);
+}
+#card { display: flex; flex-direction: column; gap: 14px; max-width: 460px; min-width: 0; }
+#card h1 {
+  margin: 0; font-family: var(--display); font-weight: 800; font-size: clamp(54px, 13vw, 104px); line-height: 0.86;
+  letter-spacing: 0.01em; text-transform: uppercase; text-wrap: balance;
+}
+#card p { margin: 0; font-size: 13px; line-height: 1.55; opacity: 0.88; }
+#keys { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 12px; margin: 0; }
+#keys dt { color: var(--ember); font-weight: 600; }
+#keys dd { margin: 0; opacity: 0.85; }
+#go {
+  align-self: flex-start; padding: 12px 22px; background: var(--ember); color: var(--ash); border: 0; cursor: pointer;
+  font-family: var(--display); font-weight: 800; font-size: 20px; letter-spacing: 0.08em; text-transform: uppercase;
+}
+#go:focus-visible, .tbtn:focus-visible { outline: 2px solid var(--dusk); outline-offset: 3px; }
+#go:disabled { opacity: 0.5; cursor: default; }
+#note { font-size: 11px; opacity: 0.6; }
+</style>
+
+<canvas id="view"></canvas>
+<div id="touch" hidden></div>
+<div id="stick" hidden><i></i></div>
+<button class="tbtn" id="fire" hidden>FIRE</button>
+<button class="tbtn" id="reload" hidden>RELOAD</button>
+
+<div class="hud" id="tally" hidden>Put down <span id="kills">0</span></div>
+<div class="hud" id="cross" hidden></div>
+<div class="hud" id="vitals" hidden><span>Health</span><div id="hpbar"><div id="hpfill"></div></div></div>
+<div class="hud" id="ammo" hidden><span id="rounds">12</span><small id="ammonote">9mm</small></div>
+
+<div id="veil">
+  <div id="card">
+    <h1 id="title">Dead Avenue</h1>
+    <p id="blurb">Look test for the zombie survival game: one empty stretch of city at dusk, a pistol, and a few of them still walking.</p>
+    <dl id="keys">
+      <dt>WASD</dt><dd>Move, hold Shift to run</dd>
+      <dt>Mouse</dt><dd>Look, click to fire</dd>
+      <dt>R</dt><dd>Reload</dd>
+      <dt>Phone</dt><dd>Left thumb moves, right thumb looks</dd>
+    </dl>
+    <button id="go" disabled>Loading the city</button>
+    <span id="note">Sound starts when you enter.</span>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module" src="game.js"></script>
+<!-- page:end -->
+</body>
+</html>
