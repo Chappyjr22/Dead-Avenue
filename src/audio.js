@@ -25,6 +25,7 @@ const sfx = {
   dry() { burst(0.04, 4000, 0.25, 2, 'highpass'); },
   reload() { burst(0.05, 3000, 0.3, 2, 'bandpass'); setTimeout(() => burst(0.07, 1800, 0.35, 2, 'bandpass'), 520); setTimeout(() => burst(0.05, 3500, 0.3, 2, 'bandpass'), 900); },
   groan(vol, pan) { const f = 62 + Math.random() * 40; tone(f, f * 0.72, 1.1 + Math.random() * 0.8, vol, 'sawtooth', pan); },
+  medkit() { burst(0.12, 5000, 0.3, 1.5, 'highpass'); setTimeout(() => burst(0.35, 2200, 0.2, 0.8, 'bandpass'), 180); setTimeout(() => tone(330, 520, 0.4, 0.3, 'triangle'), 720); }, // case snaps open, gauze tears, a soft rising note as it takes
   hurt() { tone(110, 50, 0.25, 0.7); burst(0.15, 500, 0.4); },
   thud(vol, pan) { burst(0.2, 300, vol, 0.7, 'lowpass', pan); }
 };
