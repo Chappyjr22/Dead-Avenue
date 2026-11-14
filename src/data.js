@@ -52,3 +52,5 @@ export const MOVEMENT = { walk: 2.5, sprint: 5.6, aim: 1.5, hipFov: 68, aimFov: 
 // Loot is identified at a distance but must be deliberately collected within reach.
 // occlusionSlack lets you target loot sitting on a shelf or counter, whose own collision circle would otherwise hide it.
 export const LOOT = { identifyRange: 5, reach: 2.4, minAimDot: 0.975, occlusionSlack: 0.75 };
+
+export const PLAYER_CONTROL = { gravity: 16, jumpSpeed: 5.2, crouchSpeed: 1.2, standEye: 1.68, crouchEye: 1.08 };

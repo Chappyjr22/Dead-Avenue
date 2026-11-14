@@ -1,0 +1,73 @@
+{
+  "source_repository": "Chappyjr22/zombie-town-updated",
+  "source_commit": "8ac866712cffd023e6a6fb1336ce841c243e862c",
+  "source_directory": "assets/models/weapons/cc0",
+  "license": "CC0-1.0",
+  "status": "Imported assets only; not integrated into gameplay.",
+  "models": [
+    {
+      "file": "ak47.glb",
+      "bytes": 410192,
+      "sha256": "eb0989596172ca4506aee82c885a6175c911a5c9b7505b280f3735c762e61e5f",
+      "meshes": 5,
+      "materials": 1,
+      "animations": 0
+    },
+    {
+      "file": "flare-gun.glb",
+      "bytes": 211908,
+      "sha256": "2643f3cb99aa88a264c6de75988cecf75e068375dd7d0b0266cc3ecaa4102b3b",
+      "meshes": 4,
+      "materials": 1,
+      "animations": 0
+    },
+    {
+      "file": "grease-gun.glb",
+      "bytes": 514548,
+      "sha256": "cfb726f18e122798ed0662184364faac5486b76de9645b6d9076a850115e51f5",
+      "meshes": 6,
+      "materials": 2,
+      "animations": 0
+    },
+    {
+      "file": "luger.glb",
+      "bytes": 372016,
+      "sha256": "ea88ea40d7ed67fd80e4461323afcbc627968c6bb8adebe560f359399430e0f6",
+      "meshes": 8,
+      "materials": 1,
+      "animations": 0
+    },
+    {
+      "file": "m4a1.glb",
+      "bytes": 422820,
+      "sha256": "19b27bd8613d7db35ff6dbc81f2a51674e113890ad3473105aaa047b5ddf21a1",
+      "meshes": 13,
+      "materials": 1,
+      "animations": 0
+    },
+    {
+      "file": "shotgun.glb",
+      "bytes": 350980,
+      "sha256": "b83ce52d8de545066e8f327e55cac53a0faddfcaf6ae564b24dccec9dfe8472d",
+      "meshes": 4,
+      "materials": 1,
+      "animations": 0
+    },
+    {
+      "file": "sniper.glb",
+      "bytes": 379960,
+      "sha256": "9381e3b32bc4757782c7fe272987e85f1a5871e059d6c124c10578a1a6e6b526",
+      "meshes": 8,
+      "materials": 1,
+      "animations": 0
+    },
+    {
+      "file": "suomi-kp.glb",
+      "bytes": 584688,
+      "sha256": "2617b40bb5d0f99f9f38bf8bff055cfa781adc39ac53aec8d48a359064fa35d8",
+      "meshes": 6,
+      "materials": 1,
+      "animations": 0
+    }
+  ]
+}

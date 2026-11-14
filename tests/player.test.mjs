@@ -3,21 +3,21 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import * as THREE from 'three';
-import { MOVEMENT, LOOT, MEDKIT } from '../src/data.js';
+import { MOVEMENT, LOOT, MEDKIT, PLAYER_CONTROL } from '../src/data.js';
 function setup(pickSpots = []) {
  const elements=new Map(),events={};
  function el(id) { if(!elements.has(id))elements.set(id,{hidden:true,style:{},firstElementChild:{style:{}},handlers:{},attrs:{},addEventListener(n,f){(this.handlers[n]??=[]).push(f);},setAttribute(k,v){this.attrs[k]=v;},emit(n,e={}){for(const f of this.handlers[n]||[])f(e);}});return elements.get(id); }
  const player={x:41,z:44,y:0,yaw:0,pitch:0,hp:100,hurt:0,ammo:12,spare:24,kills:0,reloading:0,cool:0,bob:0,kick:0,medkits:MEDKIT.start,healing:0};
  const game={ready:true,started:false,dead:false,touchMode:true,firing:false};
  const camera=new THREE.PerspectiveCamera(),scene=new THREE.Scene();
- const context={LOOT,MOVEMENT,MEDKIT,THREE,player,game,camera,scene,canvas:el('view'),$:el,rnd:()=>0.5,clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),
+ const context={MEDKIT,PLAYER_CONTROL,LOOT,MOVEMENT,THREE,player,game,camera,scene,canvas:el('view'),$:el,rnd:()=>0.5,clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),
  MAG_SIZE:12,START_SPARE:24,AMMO_BOX:12,pickSpots,zombies:[],clock:{elapsedTime:0},GUN_POS:new THREE.Vector3(),
  groundY:()=>0,roomAt:()=>null,collide:()=>{},rayWorld:()=>140,hitZombieVisual:()=>{},buildPistol:()=>new THREE.Group(),placeZombie:()=>{},audioStart:()=>{},
- sfx:{dry(){},shot(){},reload(){},thud(){},medkit(){}},mkCanvas:()=>({getContext:()=>({createRadialGradient:()=>({addColorStop(){}}),fillRect(){}})}),
+ sfx:{medkit(){},dry(){},shot(){},reload(){},thud(){},jump(){},land(){},pickup(){},voice(){},stopVoice(){}},mkCanvas:()=>({getContext:()=>({createRadialGradient:()=>({addColorStop(){}}),fillRect(){}})}),
  document:{getElementById:el,addEventListener(n,f){events[n]=f;},hidden:false},
  addEventListener(n,f){(events[n]??=[]).push(f);},innerWidth:800,setTimeout:()=>0,Math};
  const source=fs.readFileSync(new URL('../src/player.js',import.meta.url),'utf8').replace(/^import .*;.*$/gm,'').replace(/^export .*;$/gm,'');
- vm.runInNewContext(source+'\nglobalThis.api={begin,updatePlayer,torch,resetInput,fire,reload,heal,fp,pickups,interact};',context);
+ vm.runInNewContext(source+'\nglobalThis.api={begin,updatePlayer,torch,resetInput,fire,reload,fp,pickups,interact,heal,jump,toggleCrouch};',context);
  return {context,el,events,player,game,camera,api:context.api};
 }
 test('flashlight attached, mobile toggle controls intensity and preserves manual choice',()=>{
@@ -112,6 +112,29 @@ test('E collects only the viewed item, and restarting restores collected ammo bo
  game.dead=true;api.begin();assert.equal(api.pickups[0].taken,false);assert.equal(api.pickups[0].m.visible,true);
 });
 
+test('jump follows one grounded arc, rejects double jumps, and lands once',()=>{
+ const {api,player,camera,context,el}=setup();api.begin();api.updatePlayer(.01);
+ let landings=0,jumps=0;context.sfx.jump=()=>jumps++;context.sfx.land=()=>landings++;
+ const ground=camera.position.y;api.jump();api.updatePlayer(.1);const first=camera.position.y;
+ assert.ok(first>ground+.3);api.jump();assert.equal(jumps,1);
+ let apex=first;for(let i=0;i<30;i++){api.updatePlayer(.025);apex=Math.max(apex,camera.position.y);}
+ assert.ok(apex-ground>.75 && apex-ground<.9);assert.equal(landings,1);assert.equal(player.airborne,false);
+ assert.ok(Math.abs(camera.position.y-ground)<.02);
+ assert.equal(el('jump').hidden,false);api.jump();assert.equal(jumps,2);
+ player.hp=-1;api.updatePlayer(.01);assert.equal(el('jump').hidden,true);api.jump();assert.equal(jumps,2);
+ api.begin();api.updatePlayer(.01);assert.equal(player.airborne,false);
+});
+test('crouch lowers the eye and movement speed, sprint and jump stand the player up',()=>{
+ const {api,el,events,player,camera}=setup();api.begin();el('crouch').emit('click');
+ for(let i=0;i<20;i++)api.updatePlayer(.05);
+ assert.equal(player.crouching,true);assert.ok(Math.abs(camera.position.y-1.08)<.01);
+ events.keydown.forEach(f=>f({code:'KeyW'}));const before=player.z;api.updatePlayer(.1);
+ assert.ok(Math.abs(before-player.z-.12)<1e-6);
+ events.keydown.forEach(f=>f({code:'ShiftLeft'}));api.updatePlayer(.1);assert.equal(player.sprinting,false);
+ el('sprint').emit('click');api.updatePlayer(.1);assert.equal(player.crouching,false);assert.equal(player.sprinting,true);
+ el('crouch').emit('click');api.updatePlayer(.1);api.jump();api.updatePlayer(.1);
+ assert.equal(player.crouching,false);assert.equal(player.airborne,true);
+});
 const medkit=(x,y,z)=>Object.assign(new THREE.Vector3(x,y,z),{kind:'medkit'});
 const press=(events,code)=>events.keydown.forEach(f=>f({code,repeat:false}));
 test('health does not regenerate on its own',()=>{

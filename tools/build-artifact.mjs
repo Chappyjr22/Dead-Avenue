@@ -12,4 +12,5 @@ fs.cpSync('src', 'dist/src', { recursive: true });
 for (const name of ['walker', 'makarov', 'city-zombie']) {
   fs.writeFileSync('dist/' + name + '-data.js', '// Embedded glTF model.\nexport default ' + JSON.stringify(fs.readFileSync('assets/' + name + '.glb').toString('base64')) + ';\n');
 }
+if (fs.existsSync('assets/audio')) fs.cpSync('assets/audio', 'dist/assets/audio', { recursive: true });
 console.log('dist/ ready');

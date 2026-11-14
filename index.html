@@ -84,6 +84,10 @@ body {
 #interact:disabled { opacity: .65; background: transparent; cursor: default; }
 #interact:focus-visible { outline: 2px solid var(--dusk); outline-offset: 2px; }
 #loot-toast { position: fixed; z-index: 4; top: 48%; left: 50%; transform: translateX(-50%); color: var(--dusk); padding: 7px 12px; border-radius: 6px; background: rgba(13,11,10,.85); font-size: 12px; pointer-events: none; }
+#jump, #crouch { width: 56px; height: 56px; right: calc(max(20px, env(safe-area-inset-right, 0px)) + 170px); font-size: 12px; }
+#jump { bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
+#crouch { bottom: calc(140px + env(safe-area-inset-bottom, 0px)); }
+#crouch[aria-pressed="true"] { border-color: var(--ember); background: #51351f; }
 #veil {
   position: fixed; inset: 0; z-index: 5; display: flex; align-items: flex-end;
   padding-block: 32px; padding-left: max(24px, env(safe-area-inset-left, 0px)); padding-right: max(24px, env(safe-area-inset-right, 0px));
@@ -117,6 +121,8 @@ body {
 <button class="tbtn" id="sprint" aria-label="Toggle sprint" aria-pressed="false" hidden>SPRINT</button>
 <button class="tbtn" id="heal" aria-label="Use a medkit" aria-disabled="true" hidden>HEAL</button>
 
+<button class="tbtn" id="jump" aria-label="Jump" hidden>JUMP</button>
+<button class="tbtn" id="crouch" aria-label="Toggle crouch" aria-pressed="false" hidden>CROUCH</button>
 <div class="hud" id="tally" hidden>Put down <span id="kills">0</span></div>
 <div class="hud" id="cross" hidden></div>
 <div class="hud" id="vitals" hidden><div id="vrow"><span>Health</span><span id="meds"><b aria-hidden="true">+</b><span id="medcount">Medkits 1/3</span></span></div><div id="hpbar"><div id="hpfill"></div></div></div>
@@ -131,10 +137,11 @@ body {
     <dl id="keys">
       <dt>WASD</dt><dd>Move, hold Shift to run</dd>
       <dt>Mouse</dt><dd>Look, left click fires; hold right click or tap Q to aim</dd>
+      <dt>Space / C</dt><dd>Jump / toggle crouch</dd>
       <dt>E</dt><dd>Pick up the loot you are looking at</dd>
       <dt>R / F</dt><dd>Reload / torch</dd>
       <dt>H</dt><dd>Use a medkit. Health no longer comes back by itself</dd>
-      <dt>Phone</dt><dd>Left thumb moves; drag FIRE to look and shoot. Tap ADS to aim, SPRINT to run, HEAL to use a medkit. Look at loot and tap PICK UP.</dd>
+      <dt>Phone</dt><dd>Left thumb moves; drag FIRE to look and shoot. Tap ADS to aim, SPRINT to run, JUMP to jump, CROUCH to stay low, HEAL to use a medkit. Look at loot and tap PICK UP.</dd>
     </dl>
     <button id="go" disabled>Loading the city</button>
     <span id="note">Sound starts when you enter.</span>
