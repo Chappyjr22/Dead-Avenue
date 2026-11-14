@@ -8,21 +8,16 @@ import { mkCanvas } from './textures.js';
 import { pickSpots, groundY, roomAt, collide, rayWorld } from './world.js';
 import { audioStart, sfx } from './audio.js';
 import { player, zombies, game, clock } from './state.js';
+import { hitZombieVisual } from './zombie-visual.js';
+import { buildPistol } from './weapon-model.js';
 import { placeZombie } from './zombies.js';
 import { GUN_POS } from './arms.js';
 
 const gun = new THREE.Group();
 {
-  const gm = new THREE.MeshStandardMaterial({ color: 0x101114, roughness: 0.5, metalness: 0.7, envMapIntensity: 0.55 });
-  const s = new THREE.Shape(); [[0.185, 0.02], [0.185, 0.0], [0.1, -0.002], [0.098, -0.03], [0.07, -0.034], [0.058, -0.006], [0.036, -0.1], [-0.02, -0.094], [0.006, 0.0], [-0.008, 0.02]].forEach((p, i) => s[i ? 'lineTo' : 'moveTo'](p[0], p[1]));
-  const frame = new THREE.ExtrudeGeometry(s, { depth: 0.02, bevelEnabled: true, bevelSize: 0.005, bevelThickness: 0.005, bevelSegments: 3 }).translate(0, 0, -0.01).rotateY(Math.PI / 2);
-  const sl = new THREE.Shape(); [[0.19, 0.016], [0.19, 0.05], [0.185, 0.056], [-0.008, 0.056], [-0.014, 0.05], [-0.014, 0.016]].forEach((p, i) => sl[i ? 'lineTo' : 'moveTo'](p[0], p[1]));
-  const slide = new THREE.ExtrudeGeometry(sl, { depth: 0.024, bevelEnabled: true, bevelSize: 0.005, bevelThickness: 0.005, bevelSegments: 3 }).translate(0, 0, -0.012).rotateY(Math.PI / 2);
-  gun.add(new THREE.Mesh(frame, gm), new THREE.Mesh(slide, new THREE.MeshStandardMaterial({ color: 0x1b1c20, roughness: 0.35, metalness: 0.85, envMapIntensity: 0.7 })));
-  for (const z of [-0.012, -0.172]) { const sight = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.008, 0.012), gm); sight.position.set(0, 0.06, z); gun.add(sight); }
   const fc = mkCanvas(64, 64), fx = fc.getContext('2d'), gr = fx.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,240,200,1)'); gr.addColorStop(0.3, 'rgba(255,170,60,0.8)'); gr.addColorStop(1, 'rgba(255,90,0,0)'); fx.fillStyle = gr; fx.fillRect(0, 0, 64, 64);
   const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(fc), blending: THREE.AdditiveBlending, depthTest: false, color: new THREE.Color().setRGB(4, 3, 2) }));
-  flash.position.set(0, 0.036, -0.24); flash.scale.setScalar(0.22); flash.visible = false; gun.add(flash); gun.userData.flash = flash;
+  flash.position.set(0, 0.041, -0.20); flash.scale.setScalar(0.22); flash.visible = false; gun.add(flash); gun.userData.flash = flash;
   const fl = new THREE.PointLight(new THREE.Color().setRGB(1, 0.7, 0.35), 0, 26, 1.6); fl.position.set(0, 0.05, -0.5); gun.add(fl); gun.userData.light = fl;
 }
 const fp = new THREE.Group(); // everything the player holds: pistol plus arms
@@ -58,12 +53,13 @@ function fire() {
   }
   for (const z of zombies) if (!z.dead && Math.hypot(z.root.position.x - player.x, z.root.position.z - player.z) < 70) z.alert = Math.max(z.alert, 9);
   if (best) {
-    best.hp -= best.hitY > 1.5 ? 3 : 1; best.hitT = 0.25; best.alert = 12; sfx.thud(0.5, 0);
-    if (best.hp <= 0) { best.dead = 0.001; best.mixer.timeScale = 0; player.kills++; $('kills').textContent = player.kills; }
+    best.hp -= best.hitY > 1.5 ? 3 : 1; best.hitT = 0.25; hitZombieVisual(best.visual); best.alert = 12; sfx.thud(0.5, 0);
+    if (best.hp <= 0) { best.dead = 0.001; best.path = []; best.navPending = null; player.kills++; $('kills').textContent = player.kills; }
   }
 }
 function reload() { if (player.reloading > 0 || player.ammo === MAG_SIZE || player.spare <= 0 || game.dead) return; player.reloading = 1.25; sfx.reload(); }
 function begin() {
+  if (!game.ready) return;
   audioStart();
   resetInput();
   if (game.dead) { game.dead = false; Object.assign(player, { x: 41, z: 44, yaw: 0, pitch: 0.03, hp: 100, hurt: 0, ammo: MAG_SIZE, spare: START_SPARE, kills: 0, reloading: 0, cool: 0, kick: 0 }); pickups.forEach(p => { p.taken = false; p.m.visible = true; }); $('kills').textContent = '0'; zombies.forEach(z => placeZombie(z, 30)); }
@@ -172,4 +168,6 @@ function updatePlayer(dt) {
   $('rounds').textContent = player.reloading > 0 ? '--' : player.ammo; $('ammonote').textContent = player.reloading > 0 ? 'reloading' : `${player.spare} spare`;
 }
 
-export { fp, gun, pickups, fire, reload, begin, updatePlayer };
+function installPistol(gltf) { gun.add(buildPistol(gltf)); }
+
+export { installPistol, fp, gun, pickups, fire, reload, begin, updatePlayer };

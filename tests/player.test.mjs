@@ -7,11 +7,11 @@ function setup() {
  const elements=new Map(),events={};
  function el(id) { if(!elements.has(id))elements.set(id,{hidden:true,style:{},firstElementChild:{style:{}},handlers:{},attrs:{},addEventListener(n,f){(this.handlers[n]??=[]).push(f);},setAttribute(k,v){this.attrs[k]=v;},emit(n,e={}){for(const f of this.handlers[n]||[])f(e);}});return elements.get(id); }
  const player={x:41,z:44,y:0,yaw:0,pitch:0,hp:100,hurt:0,ammo:12,spare:24,kills:0,reloading:0,cool:0,bob:0,kick:0};
- const game={started:false,dead:false,touchMode:true,firing:false};
+ const game={ready:true,started:false,dead:false,touchMode:true,firing:false};
  const camera=new THREE.PerspectiveCamera(),scene=new THREE.Scene();
  const context={THREE,player,game,camera,scene,canvas:el('view'),$:el,rnd:()=>0.5,clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),
  MAG_SIZE:12,START_SPARE:24,AMMO_BOX:12,pickSpots:[],zombies:[],clock:{elapsedTime:0},GUN_POS:new THREE.Vector3(),
- groundY:()=>0,roomAt:()=>null,collide:()=>{},rayWorld:()=>140,placeZombie:()=>{},audioStart:()=>{},
+ groundY:()=>0,roomAt:()=>null,collide:()=>{},rayWorld:()=>140,hitZombieVisual:()=>{},buildPistol:()=>new THREE.Group(),placeZombie:()=>{},audioStart:()=>{},
  sfx:{dry(){},shot(){},reload(){},thud(){}},mkCanvas:()=>({getContext:()=>({createRadialGradient:()=>({addColorStop(){}}),fillRect(){}})}),
  document:{getElementById:el,addEventListener(n,f){events[n]=f;},hidden:false},
  addEventListener(n,f){(events[n]??=[]).push(f);},innerWidth:800,setTimeout:()=>0,Math};
