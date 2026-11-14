@@ -56,7 +56,7 @@ function setAction(v, name, immediate = false) {
   v.current = name;
 }
 export function resetZombieVisual(v) {
-  v.mixer.stopAllAction(); v.ragdoll = null; v.deathImpulse = null;
+  v.mixer.stopAllAction(); v.ragdoll = null; v.deathImpulse = v.hitHeight = null;
   for (const p of v.rest) { p.bone.position.copy(p.position); p.bone.quaternion.copy(p.quaternion); p.bone.scale.copy(p.scale); }
   v.mixer.timeScale = 1; v.current = null; v.hitRemaining = 0;
   setAction(v, 'idle', true); v.mixer.update(0);

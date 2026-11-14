@@ -9,7 +9,7 @@ const srv = http.createServer((q, s) => {
   if (u === '/') u = '/index.html';
   const f = path.join(root, u); if (!fs.existsSync(f)) { s.statusCode = 404; return s.end(); }
   s.setHeader('content-type', types[path.extname(f)] || 'application/octet-stream'); s.end(fs.readFileSync(f));
-}).listen(8765);
+}).listen(+process.env.PORT || 8765);
 const b = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const shots = JSON.parse(process.argv[2] || '[]'); const W = +(process.argv[3] || 1280), H = +(process.argv[4] || 720);
 const pg = await b.newPage({ viewport: { width: W, height: H } });
@@ -19,7 +19,7 @@ pg.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') cons
 pg.on('pageerror', e => console.log('[pageerror]', e.message, (e.stack || '').split('\n').slice(0, 4).join(' | ')));
 fs.mkdirSync('shots', { recursive: true });
 await pg.addInitScript(() => { window.__manual = true; });
-await pg.goto('http://localhost:8765/');
+await pg.goto(`http://localhost:${+process.env.PORT || 8765}/`);
 await pg.waitForFunction(() => window.__game && !document.getElementById('go').disabled, null, { timeout: 120000 }).catch(e => console.log('wait fail', e.message));
 for (const s of shots) {
   const t0 = Date.now();
