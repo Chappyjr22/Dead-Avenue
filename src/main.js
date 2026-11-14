@@ -43,4 +43,4 @@ new GLTFLoader().load('assets/walker.glb', onWalker, undefined, () => {
   import('../walker-data.js').then(m => { const bin = atob(m.default), buf = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i); new GLTFLoader().parse(buf.buffer, '', onWalker, loadFail); }).catch(loadFail);
 });
 
-window.__game = { player, zombies, camera, begin, frame, renderer, rooms, pickups, collide, roomAt, rayWorld };
+window.__game = { updateNavigation, updateZombie, player, zombies, camera, begin, frame, renderer, rooms, pickups, collide, roomAt, rayWorld };

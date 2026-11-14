@@ -1,13 +1,13 @@
 // Shared, incremental A*: collision-sized routes through streets and shop doors.
 // Grid occupancy is lazy and cached; invalidate when future building changes solids.
-import { collide, circles, BOUND_X, BOUND_Z } from './world.js';
+import { collide, nearCircles, clearCircleGrid, BOUND_X, BOUND_Z } from './world.js';
 const STEP = 0.75, RADIUS = 0.40;
 const cells = new Map();
-export function clearNavigation() { cells.clear(); }
+export function clearNavigation() { cells.clear(); clearCircleGrid(); }
 function clearPoint(x, z) {
   if (Math.abs(x) > BOUND_X || Math.abs(z) > BOUND_Z) return false;
   // collide intentionally ignores exact circle centres; navigation must not.
-  for (const c of circles) if (Math.hypot(x - c.x, z - c.z) < c.r + RADIUS) return false;
+  for (const c of nearCircles(x, z)) if (Math.hypot(x - c.x, z - c.z) < c.r + RADIUS) return false;
   const p = { x, z }; collide(p, RADIUS);
   return Math.hypot(p.x - x, p.z - z) < 0.001;
 }
@@ -80,7 +80,10 @@ export function requestRoute(owner, from, to) {
 }
 export function updateNavigation() {
   // One shared budget, independent of zombie count. Round-robin avoids starvation.
+  // Also capped by time: the first searches after a gunshot fill the occupancy cache and cost more per step.
+  const t0=performance.now();
   for (let i=0;i<160 && queue.length;i++) {
+    if ((i & 7) === 7 && performance.now()-t0 > 3) break;
     const job=queue.shift();
     if (job.owner.navPending !== job) continue;
     const next=job.search.next();

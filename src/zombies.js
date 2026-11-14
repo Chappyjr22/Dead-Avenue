@@ -57,7 +57,8 @@ function makeZombie() {
 }
 function placeZombie(z, minDist) {
   const p = spawnPoint(minDist); z.root.position.set(p.x, groundY(p.x, p.z), p.z); z.root.rotation.set(0, z.heading, 0);
-  z.path = []; z.navPending = null; z.navTimer = 0; z.turnT = 0; z.moving = 1;
+  z.path = []; z.navPending = null; z.navTimer = Math.random() * 0.6; // staggered so a gunshot does not make every zombie plan a route in the same frame
+  z.turnT = 0; z.moving = 1;
   z.hp = 3; z.dead = 0; z.state = 'wander'; z.alert = 0; z.mixer.timeScale = 1; z.root.visible = true;
 }
 const _q = new THREE.Quaternion(), _e = new THREE.Euler();
