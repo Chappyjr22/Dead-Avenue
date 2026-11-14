@@ -64,4 +64,4 @@ async function loadAssets() {
 $('go').addEventListener('click', () => { if (!game.ready) loadAssets(); });
 loadAssets();
 
-window.__game = { player, zombies, camera, begin, frame, renderer, rooms, pickups, collide, roomAt, rayWorld };
+window.__game = { updateNavigation, updateZombie, player, zombies, camera, begin, frame, renderer, rooms, pickups, collide, roomAt, rayWorld };

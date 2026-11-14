@@ -86,6 +86,12 @@ function facade(F, width, floors, st, detail, shop) {
   return H;
 }
 
+// Shop types are dealt from a shuffled deck, so every type turns up before any repeats.
+let shopDeck = [];
+function nextShopType() {
+  if (!shopDeck.length) { shopDeck = SHOP_TYPES.slice(); for (let i = shopDeck.length - 1; i > 0; i--) { const j = ri(0, i); [shopDeck[i], shopDeck[j]] = [shopDeck[j], shopDeck[i]]; } }
+  return shopDeck.pop();
+}
 const towerSpots = [];
 function building(x0, x1, z0, z1, faces, detail, shop, block) {
   const tall = rnd() < 0.12, floors = tall ? ri(15, 26) : ri(4, 11);
@@ -95,7 +101,7 @@ function building(x0, x1, z0, z1, faces, detail, shop, block) {
   for (const f of faces) {
     const n = new THREE.Vector3(f[0], 0, f[1]), u = new THREE.Vector3(n.z, 0, -n.x);
     const p0 = new THREE.Vector3(f[0] < 0 ? x0 : f[0] > 0 ? x1 : (f[1] < 0 ? x1 : x0), 0, f[1] < 0 ? z0 : f[1] > 0 ? z1 : (f[0] < 0 ? z0 : z1));
-    const F = { p0, u, n }, type = shop && f[0] !== 0 ? pick(SHOP_TYPES) : null;
+    const F = { p0, u, n }, type = shop && f[0] !== 0 ? nextShopType() : null;
     H = facade(F, f[0] ? z1 - z0 : x1 - x0, floors, st, detail, type);
     if (type) shopInterior(F, z1 - z0, lastDoor, block, type);
   }

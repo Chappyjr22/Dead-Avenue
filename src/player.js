@@ -2,7 +2,7 @@
 import './streets.js'; // pickups are placed by the city build
 import * as THREE from 'three';
 import { rnd, clamp, $ } from './util.js';
-import { MAG_SIZE, START_SPARE, AMMO_BOX, MOVEMENT, LOOT, PLAYER_CONTROL } from './data.js';
+import { MAG_SIZE, START_SPARE, AMMO_BOX, MEDKIT, MOVEMENT, LOOT, PLAYER_CONTROL } from './data.js';
 import { canvas, scene, camera } from './render.js';
 import { mkCanvas } from './textures.js';
 import { pickSpots, groundY, roomAt, collide, rayWorld } from './world.js';
@@ -23,7 +23,9 @@ const gun = new THREE.Group();
 const fp = new THREE.Group(); // everything the player holds: pistol plus arms
 gun.scale.setScalar(0.85); gun.position.copy(GUN_POS); fp.add(gun); camera.add(fp); fp.visible = false;
 
-const torch = new THREE.SpotLight(new THREE.Color().setRGB(1, 0.93, 0.8), 0, 34, 0.5, 0.6, 1.5);
+// A gentle falloff: with true inverse-square the beam bleached anything within arm's reach.
+const TORCH_POWER = 15;
+const torch = new THREE.SpotLight(new THREE.Color().setRGB(1, 0.93, 0.8), 0, 34, 0.5, 0.6, 0.8);
 torch.position.set(0.1, -0.06, -0.8); torch.target.position.set(0.04, -0.08, -6); // starts beyond the hands so it does not bleach them
 camera.add(torch, torch.target);
 let torchOn = false, torchAuto = false, torchManual = false;
@@ -31,10 +33,20 @@ function toggleTorch() {
   if (!game.started || game.dead) return;
   torchManual = true; torchOn = !torchOn;
 }
+// Each spot holds pistol ammo (olive box, warm glow) or a medkit (white case, red cross, cool glow).
+// The case is a light grey rather than pure white so the torch does not wash out the cross.
+const medCross = new THREE.MeshStandardMaterial({ color: 0xb01810, roughness: 0.6, emissive: 0xa0140c, emissiveIntensity: 0.8 });
+const medGeo = [new THREE.BoxGeometry(0.26, 0.11, 0.18), new THREE.BoxGeometry(0.14, 0.008, 0.045), new THREE.BoxGeometry(0.045, 0.008, 0.14), new THREE.BoxGeometry(0.045, 0.09, 0.008), new THREE.BoxGeometry(0.09, 0.045, 0.008)];
 const pickups = pickSpots.map(p => {
+  if (p.kind === 'medkit') {
+    const m = new THREE.Mesh(medGeo[0], new THREE.MeshStandardMaterial({ color: 0x767c7a, roughness: 0.85, emissive: 0x2f7fb8, emissiveIntensity: 0.5 }));
+    for (const [g, y, z] of [[1, 0.059, 0], [2, 0.059, 0], [3, 0, 0.094], [4, 0, 0.094]]) { const c = new THREE.Mesh(medGeo[g], medCross); c.position.set(0, y, z); m.add(c); } // cross on the lid and the front
+    m.position.copy(p).setY(p.y + 0.01); m.rotation.y = rnd() * 3; scene.add(m); return { m, taken: false, kind: 'medkit', name: 'MEDKIT', amount: 1, glow: 0.6 };
+  }
   const m = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.09, 0.13), new THREE.MeshStandardMaterial({ color: 0x55602e, roughness: 0.6, emissive: 0x8a6a20, emissiveIntensity: 0.5 }));
-  m.position.copy(p); m.rotation.y = rnd() * 3; scene.add(m); return { m, taken: false, name: 'PISTOL AMMO', amount: AMMO_BOX };
+  m.position.copy(p); m.rotation.y = rnd() * 3; scene.add(m); return { m, taken: false, kind: 'ammo', name: 'PISTOL AMMO', amount: AMMO_BOX, glow: 1 };
 });
+const medFull = item => item.kind === 'medkit' && player.medkits >= MEDKIT.max;
 // Choose one visible item near the centre of the player's view. Revalidate on
 // interaction so turning away, moving out of reach, or a wall cannot grant loot.
 const lootDirection = new THREE.Vector3(), lootOffset = new THREE.Vector3();
@@ -52,7 +64,7 @@ function findLoot() {
     const alignment = lootDirection.dot(lootOffset);
     if (alignment < LOOT.minAimDot) continue;
     const o = camera.position, d = lootOffset;
-    if (rayWorld(o.x, o.y, o.z, d.x, d.y, d.z, distance) < distance - 0.12) continue;
+    if (rayWorld(o.x, o.y, o.z, d.x, d.y, d.z, distance) < distance - LOOT.occlusionSlack) continue;
     const rank = alignment - distance * 0.001;
     if (rank > score) { score = rank; best = { item, distance }; }
   }
@@ -61,29 +73,39 @@ function findLoot() {
 function updateLoot(dt = 0) {
   const target = findLoot();
   for (const item of pickups) if (!item.taken) {
-    item.m.material.emissiveIntensity = target?.item === item ? 1.5 : 0.45 + Math.sin(clock.elapsedTime * 4) * 0.3;
+    item.m.material.emissiveIntensity = (target?.item === item ? 1.5 : 0.45 + Math.sin(clock.elapsedTime * 4) * 0.3) * item.glow;
   }
   $('loot').hidden = !target;
   if (target) {
-    const reachable = target.distance <= LOOT.reach;
-    $('loot-name').textContent = target.item.name;
-    $('loot-amount').textContent = target.item.amount + ' rounds';
+    const { item } = target, med = item.kind === 'medkit', full = medFull(item), reachable = target.distance <= LOOT.reach && !full;
+    $('loot-name').textContent = item.name;
+    $('loot-amount').textContent = !med ? item.amount + ' rounds' : full ? `Carrying ${MEDKIT.max} of ${MEDKIT.max}, no room` : `Heals ${MEDKIT.heal} \u00b7 ${player.medkits} of ${MEDKIT.max} carried`;
     $('interact').disabled = !reachable;
-    $('interact').textContent = reachable ? (game.touchMode ? 'PICK UP' : '[E] PICK UP') : 'MOVE CLOSER';
-    $('interact').setAttribute('aria-label', 'Pick up ' + target.item.amount + ' rounds of pistol ammo');
+    $('interact').textContent = full ? 'CARRYING MAX' : target.distance > LOOT.reach ? 'MOVE CLOSER' : game.touchMode ? 'PICK UP' : '[E] PICK UP';
+    $('interact').setAttribute('aria-label', full ? `Cannot carry more than ${MEDKIT.max} medkits` : med ? 'Pick up a medkit' : 'Pick up ' + item.amount + ' rounds of pistol ammo');
   }
   lootToastTime = Math.max(0, lootToastTime - dt);
   $('loot-toast').hidden = lootToastTime <= 0 || !game.started || game.dead;
 }
 function interact() {
   const target = findLoot();
-  if (!target || target.distance > LOOT.reach) return;
+  if (!target || target.distance > LOOT.reach || medFull(target.item)) return;
   const { item } = target;
-  item.taken = true; item.m.visible = false; player.spare += item.amount;
-  sfx.pickup();
-  $('loot-toast').textContent = '+' + item.amount + ' pistol rounds'; lootToastTime = 1.5;
-  $('ammonote').textContent = player.spare + ' spare';
-  updateLoot();
+  item.taken = true; item.m.visible = false;
+  if (item.kind === 'medkit') { player.medkits++; sfx.thud(0.35, 0); $('loot-toast').textContent = `+1 medkit (${player.medkits} of ${MEDKIT.max})`; }
+  else { player.spare += item.amount; sfx.pickup(); $('loot-toast').textContent = '+' + item.amount + ' pistol rounds'; $('ammonote').textContent = player.spare + ' spare'; }
+  lootToastTime = 1.5;
+  updateMeds(); updateLoot();
+}
+// H uses a medkit: it is spent at once and the health lands when the use finishes; the pistol is lowered meanwhile.
+function heal() {
+  if (!game.started || game.dead || player.hp <= 0 || player.healing > 0 || player.reloading > 0 || player.medkits <= 0 || player.hp >= 100) return;
+  aimWanted = sprintWanted = shotQueued = false;
+  player.medkits--; player.healing = MEDKIT.time; sfx.medkit(); updateMeds();
+}
+function updateMeds() {
+  $('medcount').textContent = player.healing > 0 ? 'Healing' : `Medkits ${player.medkits}/${MEDKIT.max}`;
+  $('heal').setAttribute('aria-disabled', String(player.medkits <= 0 || player.hp >= 100 || player.healing > 0));
 }
 const keys = {};
 const move = { x: 0, y: 0 };
@@ -113,7 +135,7 @@ function toggleSprint() {
   if (sprintWanted) { aimWanted = false; crouchWanted = false; }
 }
 function fire() {
-  if (!game.started || game.dead || player.cool > 0 || player.reloading > 0) return;
+  if (!game.started || game.dead || player.cool > 0 || player.reloading > 0 || player.healing > 0) return;
   sprintWanted = false;
   if (sprintBlend > 0.08) { shotQueued = true; return; } // Raise the weapon before the shot can leave it.
   shotQueued = false;
@@ -135,21 +157,21 @@ function fire() {
     if (best.hp <= 0) { best.dead = 0.001; best.path = []; best.navPending = null; player.kills++; $('kills').textContent = player.kills; }
   }
 }
-function reload() { if (player.reloading > 0 || player.ammo === MAG_SIZE || player.spare <= 0 || game.dead) return; aimWanted = sprintWanted = shotQueued = false; player.reloading = 1.25; sfx.reload(); sfx.voice('reload'); }
+function reload() { if (player.reloading > 0 || player.healing > 0 || player.ammo === MAG_SIZE || player.spare <= 0 || game.dead) return; aimWanted = sprintWanted = shotQueued = false; player.reloading = 1.25; sfx.reload(); sfx.voice('reload'); }
 function begin() {
   if (!game.ready) return;
   audioStart();
   resetInput();
   jumpHeight = verticalSpeed = crouchBlend = landingDip = 0; player.airborne = player.crouching = false;
-  if (game.dead) { game.dead = false; Object.assign(player, { x: 41, z: 44, yaw: 0, pitch: 0.03, hp: 100, hurt: 0, ammo: MAG_SIZE, spare: START_SPARE, kills: 0, reloading: 0, cool: 0, kick: 0 }); pickups.forEach(p => { p.taken = false; p.m.visible = true; }); $('kills').textContent = '0'; zombies.forEach(z => placeZombie(z, 30)); }
+  if (game.dead) { game.dead = false; Object.assign(player, { x: 41, z: 44, yaw: 0, pitch: 0.03, hp: 100, hurt: 0, ammo: MAG_SIZE, spare: START_SPARE, kills: 0, reloading: 0, cool: 0, kick: 0, medkits: MEDKIT.start, healing: 0 }); pickups.forEach(p => { p.taken = false; p.m.visible = true; }); $('kills').textContent = '0'; zombies.forEach(z => placeZombie(z, 30)); }
   game.started = true; $('veil').hidden = true; fp.visible = true;
   for (const id of ['tally', 'cross', 'vitals', 'ammo']) $(id).hidden = false;
-  if (game.touchMode) { for (const id of ['touch', 'fire', 'reload', 'flashlight', 'aim', 'sprint', 'jump', 'crouch']) $(id).hidden = false; }
+  if (game.touchMode) { for (const id of ['touch', 'fire', 'reload', 'flashlight', 'aim', 'sprint', 'heal', 'jump', 'crouch']) $(id).hidden = false; }
   else { try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* drag-to-look still works */ } }
 }
 $('go').addEventListener('click', begin);
 addEventListener('touchstart', () => { game.touchMode = true; }, { once: true, passive: true });
-addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Space') { e.preventDefault?.(); if (!e.repeat) jump(); } if ((e.code === 'KeyC' || e.code === 'ControlLeft') && !e.repeat) { e.preventDefault?.(); toggleCrouch(); } if (e.code === 'KeyE' && !e.repeat) interact(); if (e.code === 'KeyR') reload(); if (e.code === 'KeyQ' && !e.repeat) setAim(!aimWanted); if (e.code === 'KeyF' && !e.repeat) toggleTorch(); if (e.code === 'Enter' && !game.started && !$('go').disabled) begin(); });
+addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Space') { e.preventDefault?.(); if (!e.repeat) jump(); } if ((e.code === 'KeyC' || e.code === 'ControlLeft') && !e.repeat) { e.preventDefault?.(); toggleCrouch(); } if (e.code === 'KeyE' && !e.repeat) interact(); if (e.code === 'KeyH' && !e.repeat) heal(); if (e.code === 'KeyR') reload(); if (e.code === 'KeyQ' && !e.repeat) setAim(!aimWanted); if (e.code === 'KeyF' && !e.repeat) toggleTorch(); if (e.code === 'Enter' && !game.started && !$('go').disabled) begin(); });
 addEventListener('keyup', e => { keys[e.code] = false; });
 let dragging = false;
 canvas.addEventListener('mousedown', e => {
@@ -209,7 +231,7 @@ $('reload').addEventListener('click', () => reload());
 $('flashlight').addEventListener('click', toggleTorch);
 $('interact').addEventListener('touchstart', e => { e.preventDefault(); interact(); }, { passive: false });
 $('interact').addEventListener('click', interact);
-for (const [id, action] of [['aim', () => setAim(!aimWanted)], ['sprint', toggleSprint], ['jump', jump], ['crouch', toggleCrouch]]) {
+for (const [id, action] of [['aim', () => setAim(!aimWanted)], ['sprint', toggleSprint], ['heal', heal], ['jump', jump], ['crouch', toggleCrouch]]) {
   $(id).addEventListener('touchstart', e => { e.preventDefault(); action(); }, { passive: false });
   $(id).addEventListener('click', action);
 }
@@ -232,8 +254,8 @@ function updatePlayer(dt) {
   let fx = 0, fz = 0;
   if (game.started && !game.dead) { fx = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + move.x; fz = (keys.KeyS ? 1 : 0) - (keys.KeyW ? 1 : 0) + move.y; }
   const l = Math.hypot(fx, fz);
-  const aiming = aimWanted && player.reloading <= 0 && game.started && !game.dead;
-  const run = (sprintWanted || keys.ShiftLeft || keys.ShiftRight) && fz < -0.2 && l > 0.2 && !crouchWanted && !aiming && !game.firing && !shotQueued && player.cool <= 0 && player.reloading <= 0;
+  const aiming = aimWanted && player.reloading <= 0 && player.healing <= 0 && game.started && !game.dead;
+  const run = (sprintWanted || keys.ShiftLeft || keys.ShiftRight) && fz < -0.2 && l > 0.2 && !crouchWanted && !aiming && !game.firing && !shotQueued && player.cool <= 0 && player.reloading <= 0 && player.healing <= 0;
   player.aiming = aiming; player.sprinting = !!run;
   const blend = 1 - Math.exp(-dt * 14);
   aimBlend += ((aiming ? 1 : 0) - aimBlend) * blend;
@@ -266,12 +288,12 @@ function updatePlayer(dt) {
   if (indoors !== torchAuto) { torchAuto = indoors; if (!torchManual) torchOn = indoors; } // the torch comes on by itself indoors; F overrides
   $('flashlight').setAttribute('aria-pressed', String(torchOn));
   $('flashlight').textContent = torchOn ? 'LIGHT ON' : 'LIGHT OFF';
-  torch.intensity += ((torchOn && game.started ? 95 : 0) - torch.intensity) * Math.min(1, dt * 10);
-  if (player.hp < 100 && player.hurt <= 0) player.hp = Math.min(100, player.hp + dt * 2);
+  torch.intensity += ((torchOn && game.started ? TORCH_POWER : 0) - torch.intensity) * Math.min(1, dt * 10);
+  if (player.healing > 0) { player.healing -= dt; if (player.healing <= 0) { player.healing = 0; if (player.hp > 0) player.hp = Math.min(100, player.hp + MEDKIT.heal); } }
   const bob = Math.sin(player.bob * 2) * 0.022 * Math.min(1, sp / MOVEMENT.walk) * (1 - aimBlend * 0.9) * (player.airborne ? 0 : 1) * (1 - 0.6 * crouchBlend);
   camera.position.set(player.x, player.y + PLAYER_CONTROL.standEye + jumpHeight - (PLAYER_CONTROL.standEye - PLAYER_CONTROL.crouchEye) * crouchBlend + bob - landingDip, player.z);
   camera.rotation.set(player.pitch + player.kick * 0.035, player.yaw, 0);
-  const rl = player.reloading > 0 ? Math.sin(Math.min(1, (1.25 - player.reloading) / 1.25) * Math.PI) : 0;
+  const rl = player.reloading > 0 ? Math.sin(Math.min(1, (1.25 - player.reloading) / 1.25) * Math.PI) : player.healing > 0 ? Math.sin(Math.min(1, (MEDKIT.time - player.healing) / MEDKIT.time) * Math.PI) * 0.8 : 0;
   const mv = Math.min(1, sp / MOVEMENT.walk), steady = 1 - aimBlend;
   // The whole grip moves together. ADS seats the actual front/rear sights on
   // the camera axis; sprint lowers and rolls the pistol with a running cadence.
@@ -284,16 +306,16 @@ function updatePlayer(dt) {
     Math.sin(player.bob) * 0.006 * mv * steady,
     0.25 * sprintBlend + Math.cos(player.bob) * 0.018 * sprintBlend);
   if (player.hp <= 0 && !game.dead && game.started) {
-    game.dead = true; game.started = false; jumpHeight = verticalSpeed = landingDip = 0; player.airborne = false; resetInput(); if (document.exitPointerLock) document.exitPointerLock();
+    game.dead = true; game.started = false; player.healing = 0; jumpHeight = verticalSpeed = landingDip = 0; player.airborne = false; resetInput(); if (document.exitPointerLock) document.exitPointerLock();
     $('title').textContent = 'They got you'; $('blurb').textContent = `You put down ${player.kills} before the avenue took you.`; $('go').textContent = 'Go again'; $('veil').hidden = false;
-    for (const id of ['touch', 'fire', 'reload', 'flashlight', 'aim', 'sprint', 'jump', 'crouch', 'stick', 'cross']) $(id).hidden = true; fp.visible = false;
+    for (const id of ['touch', 'fire', 'reload', 'flashlight', 'aim', 'sprint', 'heal', 'jump', 'crouch', 'stick', 'cross']) $(id).hidden = true; fp.visible = false;
   }
   updateLoot(dt);
   if (shotQueued && sprintBlend <= 0.08) fire();
-  $('hpfill').style.width = clamp(player.hp, 0, 100) + '%';
+  $('hpfill').style.width = clamp(player.hp, 0, 100) + '%'; updateMeds();
   $('rounds').textContent = player.reloading > 0 ? '--' : player.ammo; $('ammonote').textContent = player.reloading > 0 ? 'reloading' : `${player.spare} spare`;
 }
 
 function installPistol(gltf) { gun.add(buildPistol(gltf)); }
 
-export { installPistol, fp, gun, pickups, fire, reload, begin, updatePlayer };
+export { installPistol, fp, gun, pickups, fire, reload, heal, begin, updatePlayer };
