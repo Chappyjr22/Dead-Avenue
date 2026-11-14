@@ -17,7 +17,10 @@ Controls: WASD to move, Shift to run, mouse to look, click to fire, R to reload.
 - `index.html` – page, HUD and styles
 - `src/` – the game, split into modules (see `CLAUDE.md` for what each one holds)
 - `src/data.js` – colours, names and other plain values that are safe to edit
-- `assets/walker.glb` – humanoid model used for the zombies and the player's arms
+- `assets/walker.glb` – existing humanoid model used for the player's arms
+- `assets/makarov.glb` – CC0 Makarov pistol
+- `assets/city-zombie.glb` – textured CC0 zombie with walk, attack, hit and death clips
+- `assets/SOURCES.md` – imported model provenance and licences
 - `tools/build-artifact.mjs` – packages the game for publishing as a Claude artifact (`npm run build:artifact`)
 - `tools/shot.mjs` – headless screenshot harness for checking the look (needs `npm install` and Playwright)
 
@@ -27,6 +30,6 @@ Controls: WASD to move, Shift to run, mouse to look, click to fire, R to reload.
 
 ## Checks
 
-Run `npm test` for collision-route and simulated input regressions, and `npm run build:artifact` for packaging. Input tests use a mocked DOM; real phone touch feel, sound and frame rate still need device testing.
+Run `npm test` for collision-route, simulated input and actual model/animation regressions, and `npm run build:artifact` for packaging. Input tests use a mocked DOM; real phone touch feel, sound and frame rate still need device testing.
 
 Zombie pursuit uses incremental A* with a shared per-frame expansion budget. When future base building changes collision geometry, call `clearNavigation()` and clear active zombie paths and pending requests before replanning.

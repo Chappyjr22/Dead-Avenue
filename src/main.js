@@ -6,7 +6,7 @@ import { rooms, roomAt, collide, rayWorld } from './world.js';
 import { litLamps, ash } from './streets.js';
 import { player, zombies, game, clock } from './state.js';
 import { updateZombie } from './zombies.js';
-import { fp, pickups, fire, begin, updatePlayer } from './player.js';
+import { fp, pickups, fire, begin, updatePlayer, installPistol } from './player.js';
 import { buildArms } from './arms.js';
 import { initZombies } from './zombies.js';
 
@@ -31,16 +31,37 @@ function frame() {
 }
 frame();
 
-// ---------------------------------------------------------------- load the game.dead, then open the gate
-const loadFail = () => { $('go').disabled = false; $('go').textContent = 'Enter the city'; $('note').textContent = 'The walkers failed to load, so the streets are empty this time.'; };
-function onWalker(gltf) {
-  fp.add(buildArms(gltf.scene));
-  initZombies(gltf);
-  $('go').disabled = false; $('go').textContent = 'Enter the city';
+// Load arms separately: replacing the zombies must not replace the player's rig.
+const loader = new GLTFLoader();
+async function loadModel(name) {
+  try { return await loader.loadAsync('assets/' + name + '.glb'); }
+  catch (error) {
+    // Artifact builds embed GLBs in modules; normal static hosting serves the files.
+    const module = await import('../' + name + '-data.js');
+    const binary = atob(module.default), bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return loader.parseAsync(bytes.buffer, '');
+  }
 }
-// The model ships as a .glb in the repo; the published artifact can't serve that type, so it falls back to an embedded copy.
-new GLTFLoader().load('assets/walker.glb', onWalker, undefined, () => {
-  import('../walker-data.js').then(m => { const bin = atob(m.default), buf = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i); new GLTFLoader().parse(buf.buffer, '', onWalker, loadFail); }).catch(loadFail);
-});
+let loading = false;
+async function loadAssets() {
+  if (loading || game.ready) return;
+  loading = true; $('go').disabled = true; $('go').textContent = 'Loading the city';
+  try {
+    const [arms, pistol, zombie] = await Promise.all([
+      loadModel('walker'), loadModel('makarov'), loadModel('city-zombie')
+    ]);
+    const armRig = buildArms(arms.scene);
+    installPistol(pistol);
+    fp.add(armRig);
+    initZombies(zombie);
+    game.ready = true; $('go').textContent = 'Enter the city'; $('note').textContent = 'Sound starts when you enter.';
+  } catch (error) {
+    console.error('Game models failed to load:', error);
+    $('go').textContent = 'Retry loading'; $('note').textContent = 'A model could not load. Tap Retry loading to try again.';
+  } finally { loading = false; $('go').disabled = false; }
+}
+$('go').addEventListener('click', () => { if (!game.ready) loadAssets(); });
+loadAssets();
 
 window.__game = { player, zombies, camera, begin, frame, renderer, rooms, pickups, collide, roomAt, rayWorld };
