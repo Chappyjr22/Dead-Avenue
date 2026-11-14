@@ -2,27 +2,22 @@
 import './streets.js'; // pickups are placed by the city build
 import * as THREE from 'three';
 import { rnd, clamp, $ } from './util.js';
-import { MAG_SIZE, START_SPARE, AMMO_BOX } from './data.js';
+import { MAG_SIZE, START_SPARE, AMMO_BOX, MOVEMENT, LOOT } from './data.js';
 import { canvas, scene, camera } from './render.js';
 import { mkCanvas } from './textures.js';
 import { pickSpots, groundY, roomAt, collide, rayWorld } from './world.js';
 import { audioStart, sfx } from './audio.js';
 import { player, zombies, game, clock } from './state.js';
+import { hitZombieVisual } from './zombie-visual.js';
+import { buildPistol } from './weapon-model.js';
 import { placeZombie } from './zombies.js';
 import { GUN_POS } from './arms.js';
 
 const gun = new THREE.Group();
 {
-  const gm = new THREE.MeshStandardMaterial({ color: 0x101114, roughness: 0.5, metalness: 0.7, envMapIntensity: 0.55 });
-  const s = new THREE.Shape(); [[0.185, 0.02], [0.185, 0.0], [0.1, -0.002], [0.098, -0.03], [0.07, -0.034], [0.058, -0.006], [0.036, -0.1], [-0.02, -0.094], [0.006, 0.0], [-0.008, 0.02]].forEach((p, i) => s[i ? 'lineTo' : 'moveTo'](p[0], p[1]));
-  const frame = new THREE.ExtrudeGeometry(s, { depth: 0.02, bevelEnabled: true, bevelSize: 0.005, bevelThickness: 0.005, bevelSegments: 3 }).translate(0, 0, -0.01).rotateY(Math.PI / 2);
-  const sl = new THREE.Shape(); [[0.19, 0.016], [0.19, 0.05], [0.185, 0.056], [-0.008, 0.056], [-0.014, 0.05], [-0.014, 0.016]].forEach((p, i) => sl[i ? 'lineTo' : 'moveTo'](p[0], p[1]));
-  const slide = new THREE.ExtrudeGeometry(sl, { depth: 0.024, bevelEnabled: true, bevelSize: 0.005, bevelThickness: 0.005, bevelSegments: 3 }).translate(0, 0, -0.012).rotateY(Math.PI / 2);
-  gun.add(new THREE.Mesh(frame, gm), new THREE.Mesh(slide, new THREE.MeshStandardMaterial({ color: 0x1b1c20, roughness: 0.35, metalness: 0.85, envMapIntensity: 0.7 })));
-  for (const z of [-0.012, -0.172]) { const sight = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.008, 0.012), gm); sight.position.set(0, 0.06, z); gun.add(sight); }
   const fc = mkCanvas(64, 64), fx = fc.getContext('2d'), gr = fx.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,240,200,1)'); gr.addColorStop(0.3, 'rgba(255,170,60,0.8)'); gr.addColorStop(1, 'rgba(255,90,0,0)'); fx.fillStyle = gr; fx.fillRect(0, 0, 64, 64);
   const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(fc), blending: THREE.AdditiveBlending, depthTest: false, color: new THREE.Color().setRGB(4, 3, 2) }));
-  flash.position.set(0, 0.036, -0.24); flash.scale.setScalar(0.22); flash.visible = false; gun.add(flash); gun.userData.flash = flash;
+  flash.position.set(0, 0.041, -0.20); flash.scale.setScalar(0.22); flash.visible = false; gun.add(flash); gun.userData.flash = flash;
   const fl = new THREE.PointLight(new THREE.Color().setRGB(1, 0.7, 0.35), 0, 26, 1.6); fl.position.set(0, 0.05, -0.5); gun.add(fl); gun.userData.light = fl;
 }
 const fp = new THREE.Group(); // everything the player holds: pistol plus arms
@@ -38,12 +33,77 @@ function toggleTorch() {
 }
 const pickups = pickSpots.map(p => {
   const m = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.09, 0.13), new THREE.MeshStandardMaterial({ color: 0x55602e, roughness: 0.6, emissive: 0x8a6a20, emissiveIntensity: 0.5 }));
-  m.position.copy(p); m.rotation.y = rnd() * 3; scene.add(m); return { m, taken: false };
+  m.position.copy(p); m.rotation.y = rnd() * 3; scene.add(m); return { m, taken: false, name: 'PISTOL AMMO', amount: AMMO_BOX };
 });
+// Choose one visible item near the centre of the player's view. Revalidate on
+// interaction so turning away, moving out of reach, or a wall cannot grant loot.
+const lootDirection = new THREE.Vector3(), lootOffset = new THREE.Vector3();
+let lootToastTime = 0;
+function findLoot() {
+  if (!game.started || game.dead || player.hp <= 0) return null;
+  camera.getWorldDirection(lootDirection);
+  let best = null, score = -Infinity;
+  for (const item of pickups) {
+    if (item.taken) continue;
+    lootOffset.copy(item.m.position).sub(camera.position);
+    const distance = lootOffset.length();
+    if (distance < 0.01 || distance > LOOT.identifyRange) continue;
+    lootOffset.multiplyScalar(1 / distance);
+    const alignment = lootDirection.dot(lootOffset);
+    if (alignment < LOOT.minAimDot) continue;
+    const o = camera.position, d = lootOffset;
+    if (rayWorld(o.x, o.y, o.z, d.x, d.y, d.z, distance) < distance - 0.12) continue;
+    const rank = alignment - distance * 0.001;
+    if (rank > score) { score = rank; best = { item, distance }; }
+  }
+  return best;
+}
+function updateLoot(dt = 0) {
+  const target = findLoot();
+  for (const item of pickups) if (!item.taken) {
+    item.m.material.emissiveIntensity = target?.item === item ? 1.5 : 0.45 + Math.sin(clock.elapsedTime * 4) * 0.3;
+  }
+  $('loot').hidden = !target;
+  if (target) {
+    const reachable = target.distance <= LOOT.reach;
+    $('loot-name').textContent = target.item.name;
+    $('loot-amount').textContent = target.item.amount + ' rounds';
+    $('interact').disabled = !reachable;
+    $('interact').textContent = reachable ? (game.touchMode ? 'PICK UP' : '[E] PICK UP') : 'MOVE CLOSER';
+    $('interact').setAttribute('aria-label', 'Pick up ' + target.item.amount + ' rounds of pistol ammo');
+  }
+  lootToastTime = Math.max(0, lootToastTime - dt);
+  $('loot-toast').hidden = lootToastTime <= 0 || !game.started || game.dead;
+}
+function interact() {
+  const target = findLoot();
+  if (!target || target.distance > LOOT.reach) return;
+  const { item } = target;
+  item.taken = true; item.m.visible = false; player.spare += item.amount;
+  sfx.reload();
+  $('loot-toast').textContent = '+' + item.amount + ' pistol rounds'; lootToastTime = 1.5;
+  $('ammonote').textContent = player.spare + ' spare';
+  updateLoot();
+}
 const keys = {};
 const move = { x: 0, y: 0 };
+let aimWanted = false, sprintWanted = false, aimBlend = 0, sprintBlend = 0, shotQueued = false;
+const lookScale = () => 1 - aimBlend * 0.55;
+function setAim(active) {
+  if (!game.started || game.dead) return;
+  aimWanted = active;
+  if (active) sprintWanted = false;
+}
+function toggleSprint() {
+  if (!game.started || game.dead) return;
+  sprintWanted = !sprintWanted;
+  if (sprintWanted) aimWanted = false;
+}
 function fire() {
   if (!game.started || game.dead || player.cool > 0 || player.reloading > 0) return;
+  sprintWanted = false;
+  if (sprintBlend > 0.08) { shotQueued = true; return; } // Raise the weapon before the shot can leave it.
+  shotQueued = false;
   if (player.ammo <= 0) { sfx.dry(); player.cool = 0.25; if (player.spare > 0) reload(); return; }
   player.ammo--; player.cool = 0.19; player.kick = 1; sfx.shot();
   gun.userData.flash.visible = true; gun.userData.flash.material.rotation = Math.random() * 6; gun.userData.light.intensity = 420; setTimeout(() => { gun.userData.flash.visible = false; gun.userData.light.intensity = 0; }, 55);
@@ -58,34 +118,38 @@ function fire() {
   }
   for (const z of zombies) if (!z.dead && Math.hypot(z.root.position.x - player.x, z.root.position.z - player.z) < 70) z.alert = Math.max(z.alert, 9);
   if (best) {
-    best.hp -= best.hitY > 1.5 ? 3 : 1; best.hitT = 0.25; best.alert = 12; sfx.thud(0.5, 0);
-    if (best.hp <= 0) { best.dead = 0.001; best.mixer.timeScale = 0; player.kills++; $('kills').textContent = player.kills; }
+    best.hp -= best.hitY > 1.5 ? 3 : 1; best.hitT = 0.25; hitZombieVisual(best.visual); best.alert = 12; sfx.thud(0.5, 0);
+    if (best.hp <= 0) { best.dead = 0.001; best.path = []; best.navPending = null; player.kills++; $('kills').textContent = player.kills; }
   }
 }
-function reload() { if (player.reloading > 0 || player.ammo === MAG_SIZE || player.spare <= 0 || game.dead) return; player.reloading = 1.25; sfx.reload(); }
+function reload() { if (player.reloading > 0 || player.ammo === MAG_SIZE || player.spare <= 0 || game.dead) return; aimWanted = sprintWanted = shotQueued = false; player.reloading = 1.25; sfx.reload(); }
 function begin() {
+  if (!game.ready) return;
   audioStart();
   resetInput();
   if (game.dead) { game.dead = false; Object.assign(player, { x: 41, z: 44, yaw: 0, pitch: 0.03, hp: 100, hurt: 0, ammo: MAG_SIZE, spare: START_SPARE, kills: 0, reloading: 0, cool: 0, kick: 0 }); pickups.forEach(p => { p.taken = false; p.m.visible = true; }); $('kills').textContent = '0'; zombies.forEach(z => placeZombie(z, 30)); }
   game.started = true; $('veil').hidden = true; fp.visible = true;
   for (const id of ['tally', 'cross', 'vitals', 'ammo']) $(id).hidden = false;
-  if (game.touchMode) { for (const id of ['touch', 'fire', 'reload', 'flashlight']) $(id).hidden = false; }
+  if (game.touchMode) { for (const id of ['touch', 'fire', 'reload', 'flashlight', 'aim', 'sprint']) $(id).hidden = false; }
   else { try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* drag-to-look still works */ } }
 }
 $('go').addEventListener('click', begin);
 addEventListener('touchstart', () => { game.touchMode = true; }, { once: true, passive: true });
-addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyR') reload(); if (e.code === 'KeyF' && !e.repeat) toggleTorch(); if (e.code === 'Enter' && !game.started && !$('go').disabled) begin(); });
+addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyE' && !e.repeat) interact(); if (e.code === 'KeyR') reload(); if (e.code === 'KeyQ' && !e.repeat) setAim(!aimWanted); if (e.code === 'KeyF' && !e.repeat) toggleTorch(); if (e.code === 'Enter' && !game.started && !$('go').disabled) begin(); });
 addEventListener('keyup', e => { keys[e.code] = false; });
 let dragging = false;
 canvas.addEventListener('mousedown', e => {
   if (!game.started || game.dead) return;
+  if (e.button === 2) { setAim(true); return; }
+  if (e.button !== 0) return;
   if (document.pointerLockElement === canvas) { game.firing = true; fire(); }
   else { dragging = true; try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (err) { /* ignore */ } game.firing = true; fire(); }
 });
-addEventListener('mouseup', () => { dragging = false; game.firing = false; });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+addEventListener('mouseup', e => { if (e.button === 2) setAim(false); else if (e.button === 0) { dragging = false; game.firing = false; } });
 addEventListener('mousemove', e => {
   if (!game.started || game.dead) return;
-  if (document.pointerLockElement === canvas || dragging) { player.yaw -= e.movementX * 0.0022; player.pitch = clamp(player.pitch - e.movementY * 0.0022, -1.3, 1.3); }
+  if (document.pointerLockElement === canvas || dragging) { player.yaw -= e.movementX * 0.0022 * lookScale(); player.pitch = clamp(player.pitch - e.movementY * 0.0022 * lookScale(), -1.3, 1.3); }
 });
 // touch: left half is a floating stick, right half looks
 const touch = $('touch'), stick = $('stick'); let moveId = null, lookId = null, mo = [0, 0], lp = [0, 0];
@@ -100,7 +164,7 @@ touch.addEventListener('touchmove', e => {
   e.preventDefault();
   for (const t of e.changedTouches) {
     if (t.identifier === moveId) { let dx = (t.clientX - mo[0]) / 46, dy = (t.clientY - mo[1]) / 46; const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; } move.x = dx; move.y = dy; stick.firstElementChild.style.transform = `translate(${dx * 30}px, ${dy * 30}px)`; }
-    else if (t.identifier === lookId) { player.yaw -= (t.clientX - lp[0]) * 0.0052; player.pitch = clamp(player.pitch - (t.clientY - lp[1]) * 0.0052, -1.3, 1.3); lp = [t.clientX, t.clientY]; }
+    else if (t.identifier === lookId) { player.yaw -= (t.clientX - lp[0]) * 0.0052 * lookScale(); player.pitch = clamp(player.pitch - (t.clientY - lp[1]) * 0.0052 * lookScale(), -1.3, 1.3); lp = [t.clientX, t.clientY]; }
   }
 }, { passive: false });
 const endTouch = e => { for (const t of e.changedTouches) { if (t.identifier === moveId) { moveId = null; move.x = move.y = 0; stick.hidden = true; } if (t.identifier === lookId) lookId = null; } };
@@ -116,8 +180,8 @@ $('fire').addEventListener('touchstart', e => {
 $('fire').addEventListener('touchmove', e => {
   e.preventDefault();
   for (const t of e.changedTouches) if (t.identifier === fireId) {
-    player.yaw -= (t.clientX-firePos[0])*0.0052;
-    player.pitch = clamp(player.pitch-(t.clientY-firePos[1])*0.0052,-1.3,1.3);
+    player.yaw -= (t.clientX-firePos[0])*0.0052 * lookScale();
+    player.pitch = clamp(player.pitch-(t.clientY-firePos[1])*0.0052 * lookScale(),-1.3,1.3);
     firePos = [t.clientX,t.clientY];
   }
 }, { passive: false });
@@ -129,18 +193,42 @@ $('flashlight').addEventListener('touchstart', e => { e.preventDefault(); toggle
 $('fire').addEventListener('click', () => fire());
 $('reload').addEventListener('click', () => reload());
 $('flashlight').addEventListener('click', toggleTorch);
+$('interact').addEventListener('touchstart', e => { e.preventDefault(); interact(); }, { passive: false });
+$('interact').addEventListener('click', interact);
+for (const [id, action] of [['aim', () => setAim(!aimWanted)], ['sprint', toggleSprint]]) {
+  $(id).addEventListener('touchstart', e => { e.preventDefault(); action(); }, { passive: false });
+  $(id).addEventListener('click', action);
+}
 function resetInput() {
+  $('loot').hidden = $('loot-toast').hidden = true; lootToastTime = 0;
+  aimWanted = sprintWanted = shotQueued = false; aimBlend = sprintBlend = 0;
+  player.aiming = player.sprinting = false;
+  camera.fov = MOVEMENT.hipFov; camera.updateProjectionMatrix();
+  for (const id of ['aim', 'sprint']) $(id).setAttribute('aria-pressed', 'false');
   for (const k of Object.keys(keys)) delete keys[k];
   move.x=move.y=0; moveId=lookId=fireId=null; dragging=false; game.firing=false; stick.hidden=true;
 }
 addEventListener('blur', resetInput);
+document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement && !game.touchMode) resetInput(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden) resetInput(); });
 
 function updatePlayer(dt) {
   let fx = 0, fz = 0;
   if (game.started && !game.dead) { fx = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + move.x; fz = (keys.KeyS ? 1 : 0) - (keys.KeyW ? 1 : 0) + move.y; }
-  const l = Math.hypot(fx, fz), run = keys.ShiftLeft || keys.ShiftRight || (game.touchMode && l > 0.92);
-  const sp = (run ? 6.2 : 3.4) * Math.min(1, l); if (l > 1e-3) { fx /= l; fz /= l; }
+  const l = Math.hypot(fx, fz);
+  const aiming = aimWanted && player.reloading <= 0 && game.started && !game.dead;
+  const run = (sprintWanted || keys.ShiftLeft || keys.ShiftRight) && fz < -0.2 && l > 0.2 && !aiming && !game.firing && !shotQueued && player.cool <= 0 && player.reloading <= 0;
+  player.aiming = aiming; player.sprinting = !!run;
+  const blend = 1 - Math.exp(-dt * 14);
+  aimBlend += ((aiming ? 1 : 0) - aimBlend) * blend;
+  sprintBlend += ((run ? 1 : 0) - sprintBlend) * blend;
+  const sp = (aiming ? MOVEMENT.aim : run ? MOVEMENT.sprint : MOVEMENT.walk) * Math.min(1, l);
+  if (l > 1e-3) { fx /= l; fz /= l; }
+  $('aim').setAttribute('aria-pressed', String(aiming));
+  $('sprint').setAttribute('aria-pressed', String(!!run || sprintWanted));
+  $('cross').style.opacity = String(1 - Math.max(aimBlend, sprintBlend));
+  camera.fov = MOVEMENT.hipFov + (MOVEMENT.aimFov - MOVEMENT.hipFov) * aimBlend + 3 * sprintBlend;
+  camera.updateProjectionMatrix();
   const s = Math.sin(player.yaw), c = Math.cos(player.yaw);
   player.x += (fx * c + fz * s) * sp * dt; player.z += (-fx * s + fz * c) * sp * dt;
   collide(player, 0.42);
@@ -152,24 +240,33 @@ function updatePlayer(dt) {
   $('flashlight').setAttribute('aria-pressed', String(torchOn));
   $('flashlight').textContent = torchOn ? 'LIGHT ON' : 'LIGHT OFF';
   torch.intensity += ((torchOn && game.started ? 95 : 0) - torch.intensity) * Math.min(1, dt * 10);
-  if (game.started) for (const p of pickups) {
-    if (p.taken) continue; p.m.material.emissiveIntensity = 0.45 + Math.sin(clock.elapsedTime * 4) * 0.3;
-    if (Math.hypot(p.m.position.x - player.x, p.m.position.z - player.z) < 1.15) { p.taken = true; p.m.visible = false; player.spare += AMMO_BOX; sfx.reload(); }
-  }
   if (player.hp < 100 && player.hurt <= 0) player.hp = Math.min(100, player.hp + dt * 2);
-  const bob = Math.sin(player.bob * 2) * 0.035 * Math.min(1, sp / 3.4);
+  const bob = Math.sin(player.bob * 2) * 0.022 * Math.min(1, sp / MOVEMENT.walk) * (1 - aimBlend * 0.9);
   camera.position.set(player.x, player.y + 1.68 + bob, player.z);
   camera.rotation.set(player.pitch + player.kick * 0.035, player.yaw, 0);
-  const rl = player.reloading > 0 ? Math.sin(Math.min(1, (1.25 - player.reloading) / 1.25) * Math.PI) : 0, mv = Math.min(1, sp / 3.4);
-  fp.position.set(Math.cos(player.bob) * 0.006 * mv, bob * 0.3 - rl * 0.3 - player.kick * 0.004, player.kick * 0.035);
-  fp.rotation.set(player.kick * 0.07 - rl * 0.55, Math.sin(player.bob) * 0.006 * mv, 0);
+  const rl = player.reloading > 0 ? Math.sin(Math.min(1, (1.25 - player.reloading) / 1.25) * Math.PI) : 0;
+  const mv = Math.min(1, sp / MOVEMENT.walk), steady = 1 - aimBlend;
+  // The whole grip moves together. ADS seats the actual front/rear sights on
+  // the camera axis; sprint lowers and rolls the pistol with a running cadence.
+  fp.position.set(
+    -GUN_POS.x * aimBlend + 0.045 * sprintBlend + Math.cos(player.bob) * (0.006 * mv * steady + 0.012 * sprintBlend),
+    0.0772 * aimBlend + 0.015 * sprintBlend + bob * 0.3 * steady - rl * 0.3 - player.kick * 0.004,
+    0.04 * aimBlend + 0.025 * sprintBlend + player.kick * 0.035);
+  fp.rotation.set(
+    player.kick * (0.07 - 0.04 * aimBlend) - rl * 0.55 - 0.16 * sprintBlend + Math.sin(player.bob * 2) * 0.025 * sprintBlend,
+    Math.sin(player.bob) * 0.006 * mv * steady,
+    0.25 * sprintBlend + Math.cos(player.bob) * 0.018 * sprintBlend);
   if (player.hp <= 0 && !game.dead && game.started) {
     game.dead = true; game.started = false; resetInput(); if (document.exitPointerLock) document.exitPointerLock();
     $('title').textContent = 'They got you'; $('blurb').textContent = `You put down ${player.kills} before the avenue took you.`; $('go').textContent = 'Go again'; $('veil').hidden = false;
-    for (const id of ['touch', 'fire', 'reload', 'flashlight', 'stick', 'cross']) $(id).hidden = true; fp.visible = false;
+    for (const id of ['touch', 'fire', 'reload', 'flashlight', 'aim', 'sprint', 'stick', 'cross']) $(id).hidden = true; fp.visible = false;
   }
+  updateLoot(dt);
+  if (shotQueued && sprintBlend <= 0.08) fire();
   $('hpfill').style.width = clamp(player.hp, 0, 100) + '%';
   $('rounds').textContent = player.reloading > 0 ? '--' : player.ammo; $('ammonote').textContent = player.reloading > 0 ? 'reloading' : `${player.spare} spare`;
 }
 
-export { fp, gun, pickups, fire, reload, begin, updatePlayer };
+function installPistol(gltf) { gun.add(buildPistol(gltf)); }
+
+export { installPistol, fp, gun, pickups, fire, reload, begin, updatePlayer };
