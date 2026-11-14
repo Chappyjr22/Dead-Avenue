@@ -66,6 +66,8 @@ body {
   touch-action: none;
 }
 #fire { width: 84px; height: 84px; right: max(20px, env(safe-area-inset-right, 0px)); bottom: calc(84px + env(safe-area-inset-bottom, 0px)); border-color: var(--ember); }
+#flashlight { width: 64px; height: 54px; right: max(20px, env(safe-area-inset-right, 0px)); top: calc(16px + env(safe-area-inset-top, 0px)); border-radius: 12px; font-size: 12px; }
+#flashlight[aria-pressed="true"] { border-color: var(--ember); background: #51351f; }
 #reload { width: 60px; height: 60px; right: calc(max(20px, env(safe-area-inset-right, 0px)) + 96px); bottom: calc(72px + env(safe-area-inset-bottom, 0px)); font-size: 12px; }
 #veil {
   position: fixed; inset: 0; z-index: 5; display: flex; align-items: flex-end;
@@ -94,6 +96,7 @@ body {
 <div id="touch" hidden></div>
 <div id="stick" hidden><i></i></div>
 <button class="tbtn" id="fire" hidden>FIRE</button>
+<button class="tbtn" id="flashlight" aria-label="Toggle flashlight" aria-pressed="false" hidden>LIGHT OFF</button>
 <button class="tbtn" id="reload" hidden>RELOAD</button>
 
 <div class="hud" id="tally" hidden>Put down <span id="kills">0</span></div>
@@ -109,7 +112,7 @@ body {
       <dt>WASD</dt><dd>Move, hold Shift to run</dd>
       <dt>Mouse</dt><dd>Look, click to fire</dd>
       <dt>R / F</dt><dd>Reload / torch</dd>
-      <dt>Phone</dt><dd>Left thumb moves, right thumb looks</dd>
+      <dt>Phone</dt><dd>Left thumb moves; drag FIRE to aim and shoot. LIGHT toggles flashlight.</dd>
     </dl>
     <button id="go" disabled>Loading the city</button>
     <span id="note">Sound starts when you enter.</span>

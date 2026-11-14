@@ -9,6 +9,8 @@ import { sfx } from './audio.js';
 import { player, zombies, game, clock } from './state.js';
 
 
+import { clearSegment, requestRoute } from './navigation.js';
+
 let zProto = null, zClips = {};
 const OUTFITS = ZOMBIE_OUTFITS;
 const dressCache = new Map();
@@ -55,6 +57,7 @@ function makeZombie() {
 }
 function placeZombie(z, minDist) {
   const p = spawnPoint(minDist); z.root.position.set(p.x, groundY(p.x, p.z), p.z); z.root.rotation.set(0, z.heading, 0);
+  z.path = []; z.navPending = null; z.navTimer = 0; z.turnT = 0; z.moving = 1;
   z.hp = 3; z.dead = 0; z.state = 'wander'; z.alert = 0; z.mixer.timeScale = 1; z.root.visible = true;
 }
 const _q = new THREE.Quaternion(), _e = new THREE.Euler();
@@ -68,18 +71,37 @@ function updateZombie(z, dt) {
   }
   z.hitT = Math.max(0, z.hitT - dt);
   if (z.alert > 0) z.alert -= dt;
-  const sees = dist < 34 && rayWorld(r.position.x, 1.5, r.position.z, dx / dist, 0, dz / dist, dist) >= dist - 0.01;
+  const sees = dist > 0.001 && dist < 34 && rayWorld(r.position.x, 1.5, r.position.z, dx / dist, 0, dz / dist, dist) >= dist - 0.01;
   if (sees) z.alert = 5;
   z.state = z.alert > 0 && player.hp > 0 ? 'chase' : 'wander';
   let speed = 0, want = z.heading;
-  if (z.state === 'chase') { want = Math.atan2(dx, dz); speed = dist > 1.05 ? z.speed * 1.5 : 0; }
+  if (z.state === 'chase') {
+    z.navTimer = (z.navTimer || 0) - dt;
+    if (z.navTimer <= 0) {
+      z.direct = clearSegment(r.position, player);
+      if (z.direct) { z.path = []; z.navPending = null; }
+      else requestRoute(z, r.position, player);
+      z.navTimer = 0.6;
+    }
+    let target = z.direct ? player : null;
+    if (!target && z.path?.length) {
+      // Follow only reachable waypoints, including when the zombie moved during search.
+      for (let i=Math.min(z.path.length-1,8); i>=0; i--) {
+        if (clearSegment(r.position,z.path[i])) { z.path.splice(0,i); target=z.path[0]; break; }
+      }
+      if (target && Math.hypot(target.x-r.position.x,target.z-r.position.z)<0.25) { z.path.shift(); target=z.path[0]; }
+    }
+    if (target) { want=Math.atan2(target.x-r.position.x,target.z-r.position.z); speed=dist>1.05 ? z.speed*1.5 : 0; }
+  }
   else { z.turnT -= dt; if (z.turnT < 0) { z.turnT = rr(3, 9); z.heading2 = z.heading + rr(-1.4, 1.4); z.moving = rnd() < 0.7 ? 1 : 0; } want = z.heading2 ?? z.heading; speed = z.moving ? z.speed * 0.55 : 0; }
   if (z.hitT > 0) speed *= 0.2;
   let dh = want - z.heading; dh = Math.atan2(Math.sin(dh), Math.cos(dh)); z.heading += clamp(dh, -dt * 2.2, dt * 2.2);
+  if (z.state === 'chase') speed *= Math.max(0, Math.cos(want - z.heading));
   const bx = r.position.x, bz = r.position.z;
   r.position.x += Math.sin(z.heading) * speed * dt; r.position.z += Math.cos(z.heading) * speed * dt;
   collide(r.position, 0.38);
   for (const o of zombies) if (o !== z && !o.dead) { const ex = r.position.x - o.root.position.x, ez = r.position.z - o.root.position.z, d = Math.hypot(ex, ez); if (d < 0.75 && d > 1e-4) { r.position.x += ex / d * (0.75 - d) * 0.5; r.position.z += ez / d * (0.75 - d) * 0.5; } }
+  collide(r.position, 0.38); // separation must not push enemies through walls
   const moved = Math.hypot(r.position.x - bx, r.position.z - bz) / Math.max(dt, 1e-4);
   if (z.state === 'wander' && speed > 0 && moved < speed * 0.3) z.turnT = Math.min(z.turnT, 0.3);
   r.position.y += (groundY(r.position.x, r.position.z) - r.position.y) * Math.min(1, dt * 10);
@@ -94,7 +116,7 @@ function updateZombie(z, dt) {
   if (z.reach > 0.01) { if (b.LeftArm) b.LeftArm.quaternion.multiply(_q.setFromEuler(_e.set(0, 0, -1.15 * z.reach))); if (b.RightArm) b.RightArm.quaternion.multiply(_q.setFromEuler(_e.set(0, 0, 0.95 * z.reach))); }
   if (z.hitT > 0 && b.Spine) b.Spine.quaternion.multiply(_q.setFromEuler(_e.set(-z.hitT * 2.2, 0, 0)));
   // bite
-  if (z.state === 'chase' && dist < 1.25 && game.started && player.hp > 0) { player.hp -= 22 * dt; player.hurt = Math.min(1, player.hurt + dt * 4); if ((z.biteT = (z.biteT || 0) - dt) < 0) { z.biteT = 0.6; sfx.hurt(); } }
+  if (z.state === 'chase' && dist < 1.25 && sees && game.started && player.hp > 0) { player.hp -= 22 * dt; player.hurt = Math.min(1, player.hurt + dt * 4); if ((z.biteT = (z.biteT || 0) - dt) < 0) { z.biteT = 0.6; sfx.hurt(); } }
   z.groanT -= dt;
   if (z.groanT < 0 && dist < 45) { z.groanT = z.state === 'chase' ? rr(1.5, 4) : rr(5, 14); const side = Math.sin(Math.atan2(dx, dz) - player.yaw); sfx.groan(clamp(1.6 / (1 + dist * 0.18), 0.03, 0.6), clamp(side, -1, 1)); }
 }

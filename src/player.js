@@ -29,8 +29,13 @@ const fp = new THREE.Group(); // everything the player holds: pistol plus arms
 gun.scale.setScalar(0.85); gun.position.copy(GUN_POS); fp.add(gun); camera.add(fp); fp.visible = false;
 
 const torch = new THREE.SpotLight(new THREE.Color().setRGB(1, 0.93, 0.8), 0, 34, 0.5, 0.6, 1.5);
-torch.position.set(0.1, -0.06, -0.8); torch.target.position.set(0.04, -0.08, -6); // starts beyond the hands so it does not bleach them camera.add(torch, torch.target);
-let torchOn = false, torchAuto = false;
+torch.position.set(0.1, -0.06, -0.8); torch.target.position.set(0.04, -0.08, -6); // starts beyond the hands so it does not bleach them
+camera.add(torch, torch.target);
+let torchOn = false, torchAuto = false, torchManual = false;
+function toggleTorch() {
+  if (!game.started || game.dead) return;
+  torchManual = true; torchOn = !torchOn;
+}
 const pickups = pickSpots.map(p => {
   const m = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.09, 0.13), new THREE.MeshStandardMaterial({ color: 0x55602e, roughness: 0.6, emissive: 0x8a6a20, emissiveIntensity: 0.5 }));
   m.position.copy(p); m.rotation.y = rnd() * 3; scene.add(m); return { m, taken: false };
@@ -60,15 +65,16 @@ function fire() {
 function reload() { if (player.reloading > 0 || player.ammo === MAG_SIZE || player.spare <= 0 || game.dead) return; player.reloading = 1.25; sfx.reload(); }
 function begin() {
   audioStart();
-  if (game.dead) { game.dead = false; Object.assign(player, { x: 41, z: 44, yaw: 0, pitch: 0.03, hp: 100, hurt: 0, ammo: MAG_SIZE, spare: START_SPARE, kills: 0 }); pickups.forEach(p => { p.taken = false; p.m.visible = true; }); $('kills').textContent = '0'; zombies.forEach(z => placeZombie(z, 30)); }
+  resetInput();
+  if (game.dead) { game.dead = false; Object.assign(player, { x: 41, z: 44, yaw: 0, pitch: 0.03, hp: 100, hurt: 0, ammo: MAG_SIZE, spare: START_SPARE, kills: 0, reloading: 0, cool: 0, kick: 0 }); pickups.forEach(p => { p.taken = false; p.m.visible = true; }); $('kills').textContent = '0'; zombies.forEach(z => placeZombie(z, 30)); }
   game.started = true; $('veil').hidden = true; fp.visible = true;
   for (const id of ['tally', 'cross', 'vitals', 'ammo']) $(id).hidden = false;
-  if (game.touchMode) { for (const id of ['touch', 'fire', 'reload']) $(id).hidden = false; }
+  if (game.touchMode) { for (const id of ['touch', 'fire', 'reload', 'flashlight']) $(id).hidden = false; }
   else { try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* drag-to-look still works */ } }
 }
 $('go').addEventListener('click', begin);
 addEventListener('touchstart', () => { game.touchMode = true; }, { once: true, passive: true });
-addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyR') reload(); if (e.code === 'KeyF') torchOn = !torchOn; if (e.code === 'Enter' && !game.started && !$('go').disabled) begin(); });
+addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyR') reload(); if (e.code === 'KeyF' && !e.repeat) toggleTorch(); if (e.code === 'Enter' && !game.started && !$('go').disabled) begin(); });
 addEventListener('keyup', e => { keys[e.code] = false; });
 let dragging = false;
 canvas.addEventListener('mousedown', e => {
@@ -99,10 +105,36 @@ touch.addEventListener('touchmove', e => {
 }, { passive: false });
 const endTouch = e => { for (const t of e.changedTouches) { if (t.identifier === moveId) { moveId = null; move.x = move.y = 0; stick.hidden = true; } if (t.identifier === lookId) lookId = null; } };
 touch.addEventListener('touchend', endTouch); touch.addEventListener('touchcancel', endTouch);
-$('fire').addEventListener('touchstart', e => { e.preventDefault(); game.firing = true; fire(); }, { passive: false });
-$('fire').addEventListener('touchend', () => { game.firing = false; });
+// Drag the firing thumb to aim while holding fire; the left thumb stays free.
+let fireId = null, firePos = [0, 0];
+$('fire').addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (fireId !== null || !game.started || game.dead) return;
+  const t = e.changedTouches[0]; fireId = t.identifier; firePos = [t.clientX, t.clientY];
+  game.firing = true; fire();
+}, { passive: false });
+$('fire').addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) if (t.identifier === fireId) {
+    player.yaw -= (t.clientX-firePos[0])*0.0052;
+    player.pitch = clamp(player.pitch-(t.clientY-firePos[1])*0.0052,-1.3,1.3);
+    firePos = [t.clientX,t.clientY];
+  }
+}, { passive: false });
+const stopFire = e => { for (const t of e.changedTouches) if (t.identifier === fireId) { fireId=null; game.firing=false; } };
+$('fire').addEventListener('touchend', stopFire);
+$('fire').addEventListener('touchcancel', stopFire);
 $('reload').addEventListener('touchstart', e => { e.preventDefault(); reload(); }, { passive: false });
-$('fire').addEventListener('click', () => fire()); $('reload').addEventListener('click', () => reload());
+$('flashlight').addEventListener('touchstart', e => { e.preventDefault(); toggleTorch(); }, { passive: false });
+$('fire').addEventListener('click', () => fire());
+$('reload').addEventListener('click', () => reload());
+$('flashlight').addEventListener('click', toggleTorch);
+function resetInput() {
+  for (const k of Object.keys(keys)) delete keys[k];
+  move.x=move.y=0; moveId=lookId=fireId=null; dragging=false; game.firing=false; stick.hidden=true;
+}
+addEventListener('blur', resetInput);
+document.addEventListener('visibilitychange', () => { if (document.hidden) resetInput(); });
 
 function updatePlayer(dt) {
   let fx = 0, fz = 0;
@@ -116,8 +148,10 @@ function updatePlayer(dt) {
   player.bob += sp * dt * 1.9; player.kick = Math.max(0, player.kick - dt * 7); player.cool -= dt; player.hurt = Math.max(0, player.hurt - dt * 1.3);
   if (player.reloading > 0) { player.reloading -= dt; if (player.reloading <= 0) { const take = Math.min(MAG_SIZE - player.ammo, player.spare); player.ammo += take; player.spare -= take; } }
   const indoors = !!roomAt(player.x, player.z);
-  if (indoors !== torchAuto) { torchAuto = indoors; torchOn = indoors; } // the torch comes on by itself indoors; F overrides
-  torch.intensity += ((torchOn ? 95 : 0) - torch.intensity) * Math.min(1, dt * 10);
+  if (indoors !== torchAuto) { torchAuto = indoors; if (!torchManual) torchOn = indoors; } // the torch comes on by itself indoors; F overrides
+  $('flashlight').setAttribute('aria-pressed', String(torchOn));
+  $('flashlight').textContent = torchOn ? 'LIGHT ON' : 'LIGHT OFF';
+  torch.intensity += ((torchOn && game.started ? 95 : 0) - torch.intensity) * Math.min(1, dt * 10);
   if (game.started) for (const p of pickups) {
     if (p.taken) continue; p.m.material.emissiveIntensity = 0.45 + Math.sin(clock.elapsedTime * 4) * 0.3;
     if (Math.hypot(p.m.position.x - player.x, p.m.position.z - player.z) < 1.15) { p.taken = true; p.m.visible = false; player.spare += AMMO_BOX; sfx.reload(); }
@@ -130,9 +164,9 @@ function updatePlayer(dt) {
   fp.position.set(Math.cos(player.bob) * 0.006 * mv, bob * 0.3 - rl * 0.3 - player.kick * 0.004, player.kick * 0.035);
   fp.rotation.set(player.kick * 0.07 - rl * 0.55, Math.sin(player.bob) * 0.006 * mv, 0);
   if (player.hp <= 0 && !game.dead && game.started) {
-    game.dead = true; game.started = false; game.firing = false; if (document.exitPointerLock) document.exitPointerLock();
+    game.dead = true; game.started = false; resetInput(); if (document.exitPointerLock) document.exitPointerLock();
     $('title').textContent = 'They got you'; $('blurb').textContent = `You put down ${player.kills} before the avenue took you.`; $('go').textContent = 'Go again'; $('veil').hidden = false;
-    for (const id of ['touch', 'fire', 'reload', 'stick', 'cross']) $(id).hidden = true; fp.visible = false;
+    for (const id of ['touch', 'fire', 'reload', 'flashlight', 'stick', 'cross']) $(id).hidden = true; fp.visible = false;
   }
   $('hpfill').style.width = clamp(player.hp, 0, 100) + '%';
   $('rounds').textContent = player.reloading > 0 ? '--' : player.ammo; $('ammonote').textContent = player.reloading > 0 ? 'reloading' : `${player.spare} spare`;

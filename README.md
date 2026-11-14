@@ -10,7 +10,7 @@ Serve the folder with any static server and open it in a browser:
 npm run serve
 ```
 
-Controls: WASD to move, Shift to run, mouse to look, click to fire, R to reload. On a phone, the left thumb moves and the right thumb looks.
+Controls: WASD to move, Shift to run, mouse to look, click to fire, R to reload. Press F to toggle the flashlight. On a phone, the left thumb moves (push fully to sprint), the right thumb looks, and dragging the FIRE button aims while firing. LIGHT toggles the flashlight; RELOAD reloads. The light switches automatically indoors until you make a manual choice.
 
 ## Layout
 
@@ -24,3 +24,9 @@ Controls: WASD to move, Shift to run, mouse to look, click to fire, R to reload.
 ## Asset note
 
 `assets/walker.glb` is the `Xbot` sample model from the Three.js examples, which originates from Adobe Mixamo. It is a placeholder; check its licence terms or replace it before any public release.
+
+## Checks
+
+Run `npm test` for collision-route and simulated input regressions, and `npm run build:artifact` for packaging. Input tests use a mocked DOM; real phone touch feel, sound and frame rate still need device testing.
+
+Zombie pursuit uses incremental A* with a shared per-frame expansion budget. When future base building changes collision geometry, call `clearNavigation()` and clear active zombie paths and pending requests before replanning.
