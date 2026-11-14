@@ -1,6 +1,6 @@
 // Small decoded voice cache: no streaming/API calls during gameplay.
 export const PLAYER_CUES = {
-  jump: { cooldown: 0.55, volume: 0.65, priority: 2 },
+  jump: { cooldown: 1.6, volume: 0.38, priority: 2 },
   hurt: { cooldown: 1.1, volume: 0.8, priority: 3 },
   reload: { cooldown: 14, volume: 0.75, priority: 1 },
   pickup: { cooldown: 14, volume: 0.75, priority: 1 },
@@ -14,7 +14,7 @@ export class PlayerVoice {
   async load(fetcher = fetch) {
     await Promise.all(Object.keys(PLAYER_CUES).map(async name => {
       try {
-        const response = await fetcher('assets/audio/player/' + name + '.mp3');
+        const response = await fetcher('assets/audio/player/' + name + '.mp3' + (name === 'jump' ? '?v=2' : ''));
         if (!response.ok) return;
         this.buffers.set(name, await this.context.decodeAudioData(await response.arrayBuffer()));
       } catch { /* Missing audio never blocks play; synthesis remains available. */ }

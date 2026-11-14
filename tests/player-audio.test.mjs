@@ -23,3 +23,11 @@ test('failed downloads and suspended audio leave synthesis available without thr
  const {voice,ctx}=setup();await voice.load(async()=>{throw Error('offline');});
  assert.equal(voice.play('jump'),false);voice.buffers.set('jump',{});ctx.state='suspended';assert.equal(voice.play('jump'),false);
 });
+
+test('rapid jumps suppress repeated vocals without requesting a fallback sound',async()=>{
+ const {voice,ctx,starts}=setup();voice.buffers.set('jump',{});
+ assert.equal(voice.play('jump'),true);voice.stop();
+ ctx.currentTime=.7;assert.equal(voice.play('jump'),true);assert.equal(starts.length,1);
+ ctx.currentTime=1.4;assert.equal(voice.play('jump'),true);assert.equal(starts.length,1);
+ ctx.currentTime=2.1;assert.equal(voice.play('jump'),true);assert.equal(starts.length,2);
+});

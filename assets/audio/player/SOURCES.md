@@ -13,3 +13,5 @@ Speech extracted at 0.06–0.95, 1.40–2.90, and 3.27–5.15 seconds from the o
 loudness normalization. Gameplay uses per-cue cooldowns, a six-second dialogue
 cooldown, and higher priority for damage/exertion. Missing clips fall back to
 existing synthesis. Voice quality remains subject to in-game listening feedback.
+
+Jump revision: extracted the short effort at 0.31–0.59 seconds from the first-pass clip, removed the separated lead-in and tail, high-passed at 160 Hz, and applied short fades. Reduced playback gain to 0.38 and added a 1.6-second vocal cooldown for repeated jumps. A fresh ElevenLabs take was unavailable; this is an edit of the original generation.
