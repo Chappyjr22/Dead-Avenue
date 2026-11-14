@@ -3,21 +3,21 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import * as THREE from 'three';
-import { MOVEMENT, LOOT } from '../src/data.js';
+import { MOVEMENT, LOOT, MEDKIT } from '../src/data.js';
 function setup(pickSpots = []) {
  const elements=new Map(),events={};
  function el(id) { if(!elements.has(id))elements.set(id,{hidden:true,style:{},firstElementChild:{style:{}},handlers:{},attrs:{},addEventListener(n,f){(this.handlers[n]??=[]).push(f);},setAttribute(k,v){this.attrs[k]=v;},emit(n,e={}){for(const f of this.handlers[n]||[])f(e);}});return elements.get(id); }
- const player={x:41,z:44,y:0,yaw:0,pitch:0,hp:100,hurt:0,ammo:12,spare:24,kills:0,reloading:0,cool:0,bob:0,kick:0};
+ const player={x:41,z:44,y:0,yaw:0,pitch:0,hp:100,hurt:0,ammo:12,spare:24,kills:0,reloading:0,cool:0,bob:0,kick:0,medkits:MEDKIT.start,healing:0};
  const game={ready:true,started:false,dead:false,touchMode:true,firing:false};
  const camera=new THREE.PerspectiveCamera(),scene=new THREE.Scene();
- const context={LOOT,MOVEMENT,THREE,player,game,camera,scene,canvas:el('view'),$:el,rnd:()=>0.5,clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),
+ const context={LOOT,MOVEMENT,MEDKIT,THREE,player,game,camera,scene,canvas:el('view'),$:el,rnd:()=>0.5,clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),
  MAG_SIZE:12,START_SPARE:24,AMMO_BOX:12,pickSpots,zombies:[],clock:{elapsedTime:0},GUN_POS:new THREE.Vector3(),
  groundY:()=>0,roomAt:()=>null,collide:()=>{},rayWorld:()=>140,hitZombieVisual:()=>{},buildPistol:()=>new THREE.Group(),placeZombie:()=>{},audioStart:()=>{},
- sfx:{dry(){},shot(){},reload(){},thud(){}},mkCanvas:()=>({getContext:()=>({createRadialGradient:()=>({addColorStop(){}}),fillRect(){}})}),
+ sfx:{dry(){},shot(){},reload(){},thud(){},medkit(){}},mkCanvas:()=>({getContext:()=>({createRadialGradient:()=>({addColorStop(){}}),fillRect(){}})}),
  document:{getElementById:el,addEventListener(n,f){events[n]=f;},hidden:false},
  addEventListener(n,f){(events[n]??=[]).push(f);},innerWidth:800,setTimeout:()=>0,Math};
  const source=fs.readFileSync(new URL('../src/player.js',import.meta.url),'utf8').replace(/^import .*;.*$/gm,'').replace(/^export .*;$/gm,'');
- vm.runInNewContext(source+'\nglobalThis.api={begin,updatePlayer,torch,resetInput,fire,reload,fp,pickups,interact};',context);
+ vm.runInNewContext(source+'\nglobalThis.api={begin,updatePlayer,torch,resetInput,fire,reload,heal,fp,pickups,interact};',context);
  return {context,el,events,player,game,camera,api:context.api};
 }
 test('flashlight attached, mobile toggle controls intensity and preserves manual choice',()=>{
@@ -25,7 +25,7 @@ test('flashlight attached, mobile toggle controls intensity and preserves manual
  assert.equal(api.torch.parent,camera);assert.equal(api.torch.target.parent,camera);
  assert.equal(el('flashlight').hidden,false);
  el('flashlight').emit('touchstart',{preventDefault(){}});
- api.updatePlayer(0.1);assert.equal(api.torch.intensity,95);
+ api.updatePlayer(0.1);assert.equal(api.torch.intensity,15);
  assert.equal(el('flashlight').attrs['aria-pressed'],'true');
  el('flashlight').emit('touchstart',{preventDefault(){}});
  api.updatePlayer(0.1);assert.equal(api.torch.intensity,0);
@@ -110,4 +110,71 @@ test('E collects only the viewed item, and restarting restores collected ammo bo
  assert.equal(api.pickups[0].taken,true);assert.equal(api.pickups[1].taken,false);
  events.keydown.forEach(f=>f({code:'KeyE',repeat:true}));assert.equal(player.spare,36);
  game.dead=true;api.begin();assert.equal(api.pickups[0].taken,false);assert.equal(api.pickups[0].m.visible,true);
+});
+
+const medkit=(x,y,z)=>Object.assign(new THREE.Vector3(x,y,z),{kind:'medkit'});
+const press=(events,code)=>events.keydown.forEach(f=>f({code,repeat:false}));
+test('health does not regenerate on its own',()=>{
+ const {api,player}=setup();api.begin();player.hp=40;
+ for(let i=0;i<200;i++)api.updatePlayer(.05);
+ assert.equal(player.hp,40);
+});
+test('looking at a medkit labels it as a medkit and E adds one to the carried count',()=>{
+ const {api,el,player,events}=setup([medkit(41,1,42.5),new THREE.Vector3(43,1,42.5)]);api.begin();
+ assert.equal(api.pickups[0].kind,'medkit');assert.equal(api.pickups[1].kind,'ammo');
+ player.pitch=-Math.atan2(.68,1.5);api.updatePlayer(.01);
+ assert.equal(el('loot-name').textContent,'MEDKIT');assert.ok(!/round/i.test(el('loot-amount').textContent));
+ assert.ok(!/round/i.test(el('interact').attrs['aria-label']));assert.match(el('interact').attrs['aria-label'],/medkit/i);
+ press(events,'KeyE');
+ assert.equal(player.medkits,MEDKIT.start+1);assert.equal(player.spare,24);assert.equal(api.pickups[0].taken,true);
+ assert.match(el('loot-toast').textContent,/medkit/i);assert.ok(!/round/i.test(el('loot-toast').textContent));
+ assert.equal(el('medcount').textContent,`Medkits ${MEDKIT.start+1}/${MEDKIT.max}`);
+});
+test('at the carry cap the panel says so and the medkit stays put',()=>{
+ const {api,el,player,events}=setup([medkit(41,1,42.5)]);api.begin();player.medkits=MEDKIT.max;
+ player.pitch=-Math.atan2(.68,1.5);api.updatePlayer(.01);
+ assert.equal(el('loot').hidden,false);assert.equal(el('interact').disabled,true);
+ assert.match(el('loot-amount').textContent,/no room/i);assert.equal(el('interact').textContent,'CARRYING MAX');
+ press(events,'KeyE');api.interact();
+ assert.equal(player.medkits,MEDKIT.max);assert.equal(api.pickups[0].taken,false);assert.equal(api.pickups[0].m.visible,true);
+});
+test('H heals by the configured amount over the use time, spends one medkit, and blocks firing',()=>{
+ const {api,player,events,el}=setup();api.begin();player.hp=30;player.medkits=2;
+ press(events,'KeyH');
+ assert.equal(player.medkits,1);assert.ok(player.healing>0);assert.equal(player.hp,30);
+ assert.equal(el('medcount').textContent,'Healing');
+ api.fire();assert.equal(player.ammo,12);
+ press(events,'KeyH');assert.equal(player.medkits,1); // no second use while one is in progress
+ const steps=Math.ceil(MEDKIT.time/.05);
+ for(let i=0;i<steps-2;i++)api.updatePlayer(.05);
+ assert.equal(player.hp,30);api.fire();assert.equal(player.ammo,12);
+ for(let i=0;i<3;i++)api.updatePlayer(.05);
+ assert.equal(player.healing,0);assert.equal(player.hp,30+MEDKIT.heal);
+ api.fire();assert.equal(player.ammo,11);
+ player.hp=90;player.cool=0;press(events,'KeyH');for(let i=0;i<steps+1;i++)api.updatePlayer(.05);
+ assert.equal(player.hp,100);assert.equal(player.medkits,0);
+});
+test('H does nothing at full health or with no medkits',()=>{
+ const {api,player,events}=setup();api.begin();
+ player.hp=100;player.medkits=2;press(events,'KeyH');
+ assert.equal(player.medkits,2);assert.equal(player.healing,0);
+ player.hp=50;player.medkits=0;press(events,'KeyH');api.updatePlayer(.05);
+ assert.equal(player.medkits,0);assert.equal(player.healing,0);assert.equal(player.hp,50);
+});
+test('the HEAL button shows and hides with the other touch buttons',()=>{
+ const {api,el,player}=setup();api.begin();
+ assert.equal(el('heal').hidden,false);player.hp=60;el('heal').emit('touchstart',{preventDefault(){}});
+ assert.equal(player.medkits,MEDKIT.start-1);assert.ok(player.healing>0);
+ player.hp=-1;api.updatePlayer(.01);assert.equal(el('heal').hidden,true);assert.equal(el('fire').hidden,true);
+});
+test('dying and going again resets health, medkits, an in-progress heal, and every pickup',()=>{
+ const {api,player,events,game}=setup([medkit(41,1,42.5),new THREE.Vector3(41.25,1,42.5)]);api.begin();
+ player.pitch=-Math.atan2(.68,1.5);api.updatePlayer(.01);press(events,'KeyE');
+ assert.equal(api.pickups[0].taken,true);assert.equal(player.medkits,MEDKIT.start+1);
+ player.hp=20;press(events,'KeyH');assert.ok(player.healing>0);
+ player.hp=-1;api.updatePlayer(.01);assert.equal(game.dead,true);assert.equal(player.healing,0);
+ api.begin();
+ assert.equal(player.hp,100);assert.equal(player.medkits,MEDKIT.start);assert.equal(player.healing,0);
+ assert.ok(api.pickups.every(p=>!p.taken&&p.m.visible));
+ for(let i=0;i<30;i++)api.updatePlayer(.05);assert.equal(player.hp,100);
 });
