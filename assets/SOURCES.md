@@ -30,3 +30,10 @@ CC0 summary: https://creativecommons.org/publicdomain/zero/1.0/
 Legal code: https://creativecommons.org/publicdomain/zero/1.0/legalcode
 
 The unchanged `walker.glb` arm source is covered separately in the root README.
+
+## Additional gun assets
+
+Eight additional CC0 gun models are stored in `weapons/`. See
+[the asset catalog](weapons/README.md), [license](weapons/LICENSE.txt), and
+[manifest](weapons/manifest.json) for exact provenance and checksums.
+These are imported source assets awaiting gameplay integration.
