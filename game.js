@@ -225,6 +225,14 @@ const stoneMat = worldUV(new THREE.MeshStandardMaterial({ map: stoneT.map, norma
 const walkMat = worldUV(new THREE.MeshStandardMaterial({ map: walkT.map, normalMap: walkT.normal, roughness: 0.95, color: 0x9a948c, envMapIntensity: 0.3 }), 1 / 3);
 const roadMat = worldUV(new THREE.MeshStandardMaterial({ map: roadT.map, normalMap: roadT.normal, roughness: 0.86, color: 0xc4c2c0, envMapIntensity: 0.8 }), 1 / 9);
 const plainMat = new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0.1, envMapIntensity: 0.4 });
+const intMat = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0.05, envMapIntensity: 0.06 }); // shop interiors: kept dim so the torch matters
+const tileFloorMat = (() => {
+  const c = mkCanvas(256, 256), x = c.getContext('2d');
+  for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) { x.fillStyle = (i + j) % 2 ? '#8f8c84' : '#5c5a55'; x.fillRect(i * 128, j * 128, 128, 128); }
+  x.strokeStyle = 'rgba(20,18,16,0.8)'; x.lineWidth = 3; x.strokeRect(0, 0, 128, 128); x.strokeRect(128, 128, 128, 128); x.strokeRect(128, 0, 128, 128); x.strokeRect(0, 128, 128, 128);
+  blotches(x, 256, 256, 30, 10, 60, 0.3, 10, 70); speckle(x, 256, 256, 30);
+  return worldUV(new THREE.MeshStandardMaterial({ map: tex(c), roughness: 0.55, color: 0x777777, envMapIntensity: 0.12 }), 1 / 1.2);
+})();
 const ironMat = new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.6, color: 0x1c1a19, envMapIntensity: 0.6 });
 
 // ---- window + storefront atlas (4 x 3 tiles) with matching roughness and glow maps
@@ -307,7 +315,7 @@ class Batch {
     mesh.castShadow = cast; mesh.receiveShadow = receive; mesh.frustumCulled = false; scene.add(mesh); return mesh;
   }
 }
-const B = { far: new Batch(), wall: new Batch(), stone: new Batch(), plain: new Batch(), iron: new Batch(), win: new Batch(), sign: new Batch(), walk: new Batch() };
+const B = { int: new Batch(), tile: new Batch(), far: new Batch(), wall: new Batch(), stone: new Batch(), plain: new Batch(), iron: new Batch(), win: new Batch(), sign: new Batch(), walk: new Batch() };
 const _m = new THREE.Matrix4(), UP = new THREE.Vector3(0, 1, 0), WHITE = col(0xffffff);
 function obox(batch, c, ax, ay, az, sx, sy, sz, color, tx, ty) {
   _m.set(ax.x * sx, ay.x * sy, az.x * sz, c.x, ax.y * sx, ay.y * sy, az.y * sz, c.y, ax.z * sx, ay.z * sy, az.z * sz, c.z, 0, 0, 0, 1);
@@ -330,7 +338,9 @@ const TRIMS = [0xa39c8c, 0x8d877b, 0x6f6a62, 0xb8b0a0].map(col);
 const AWN = [0x6d2a24, 0x2c4a3a, 0x2a3a5a, 0x8a7a4a, 0x3a3a3a].map(col);
 const IRON = col(0x211f1e), DARK = col(0x1a1817);
 
-function facade(F, width, floors, st, detail) {
+const rooms = [], shopCircles = [], pickSpots = [], lurkSpots = [];
+let lastDoor = null;
+function facade(F, width, floors, st, detail, shop) {
   const H = G + (floors - 1) * FH + 1.0;
   const bays = Math.max(2, Math.round(width / st.bay)), bw = width / bays, pw = st.pier;
   for (let k = 0; k <= bays; k++) fb(B.wall, F, Math.max(0, k * bw - pw / 2), Math.min(width, k * bw + pw / 2), 0, H, -0.5, 0, st.wall);
@@ -353,6 +363,20 @@ function facade(F, width, floors, st, detail) {
   }
   // ground floor: sign band, bulkhead and storefront bays
   fb(B.plain, F, 0, width, G - 1.0, G - 0.1, -0.5, 0.1, st.band);
+  if (shop) { // an open doorway in the middle bay, glazing either side
+    const db = Math.floor(bays / 2), d0 = db * bw + pw / 2, d1 = (db + 1) * bw - pw / 2, mid = (d0 + d1) / 2;
+    for (let k = 0; k < bays; k++) {
+      if (k === db) continue;
+      fb(B.stone, F, k * bw, (k + 1) * bw, 0, 0.65, -0.5, -0.1, st.trim);
+      fq(B.win, F, k * bw + pw / 2, (k + 1) * bw - pw / 2, 0.65, G - 1.0, -0.3, 0, 0);
+    }
+    fb(B.plain, F, d0, d1, 2.6, G - 1.0, -0.36, -0.26, st.band);
+    fq(B.sign, F, mid - 2.7, mid + 2.7, G - 0.96, G - 0.14, 0.115, ri(0, 1), ri(0, 7));
+    const L = new THREE.Vector3().copy(F.u).multiplyScalar(Math.cos(1.25)).addScaledVector(F.n, -Math.sin(1.25)), Ln = new THREE.Vector3().crossVectors(L, UP); // door left ajar
+    _c.copy(F.p0).addScaledVector(F.u, d0 + 0.04).addScaledVector(F.n, -0.3).addScaledVector(L, 0.5); _c.y = 0.18 + 1.2;
+    obox(B.plain, _c, L, UP, Ln, 1.0, 2.38, 0.05, col(0x24302a));
+    lastDoor = { a0: d0, a1: d1 };
+  } else {
   fb(B.stone, F, 0, width, 0, 0.45, -0.5, -0.1, st.trim);
   let k = 0;
   while (k < bays) {
@@ -369,6 +393,7 @@ function facade(F, width, floors, st, detail) {
       obox(B.plain, _c, F.u, th, sl, a1 - a0 + 0.3, 0.06, 1.55, pick(AWN));
     }
     k += span;
+  }
   }
   // fire escape
   if (detail && floors >= 4 && floors <= 9 && bays >= 4 && rnd() < 0.7) {
@@ -390,8 +415,61 @@ function facade(F, width, floors, st, detail) {
   return H;
 }
 
+const DIM = c => col(c).multiplyScalar(0.5);
+const GOODS = [0xb03a2e, 0xd4a82a, 0x2e5fa8, 0x3f8a4a, 0xd8d4c8, 0xc8642a, 0x7a3a8a, 0x2a8a8a].map(DIM);
+function shopInterior(F, width, door, block) {
+  const Dp = 12.5, FL = 0.2, CE = 3.5, w2 = (a, d) => new THREE.Vector3().copy(F.p0).addScaledVector(F.u, a).addScaledVector(F.n, d);
+  fb(B.tile, F, 0, width, 0.17, FL, -Dp, -0.02, WHITE);
+  fb(B.int, F, 0, width, CE, CE + 0.12, -Dp, -0.5, DIM(0x8a8880));
+  const wallC = DIM(pick([0x9a9484, 0x8a9690, 0xa09078]));
+  fb(B.int, F, 0, 0.4, FL, CE, -Dp, -0.5, wallC); fb(B.int, F, width - 0.4, width, FL, CE, -Dp, -0.5, wallC); fb(B.int, F, 0, width, FL, CE, -Dp - 0.4, -Dp, wallC);
+  fb(B.int, F, 0.4, width - 0.4, FL, FL + 0.12, -Dp + 0.0, -Dp + 0.03, DIM(0x3a3632));
+  for (let a = 2; a < width - 2; a += 3.2) fb(B.int, F, a, a + 1.3, CE - 0.07, CE, -Dp + 2, -Dp + 2.3, DIM(0xd8d8d0)), fb(B.int, F, a, a + 1.3, CE - 0.07, CE, -5, -4.7, DIM(0xd8d8d0)); // dead strip lights
+  const circ = (a, d, r, h) => { const p = w2(a, d); shopCircles.push({ x: p.x, z: p.z, r, h }); };
+  // chiller cabinets along the back wall
+  for (let a = 0.6; a + 1.1 < width - 0.6; a += 1.15) {
+    fb(B.int, F, a, a + 1.1, FL, 2.25, -Dp + 0.02, -Dp + 0.75, DIM(0xc4c4bc));
+    fb(B.int, F, a + 0.07, a + 1.03, FL + 0.25, 2.1, -Dp + 0.74, -Dp + 0.78, col(0x0c1012));
+    fb(B.int, F, a + 0.93, a + 0.97, 1.0, 1.5, -Dp + 0.78, -Dp + 0.83, DIM(0x9a9a98));
+  }
+  for (let a = 1; a < width - 1; a += 0.9) circ(a, -Dp + 0.4, 0.55, 2.2);
+  // counter and till beside the door
+  const side = rnd() < 0.5 ? 1 : -1, ca = side > 0 ? width - 3.6 : 0.9, cd0 = -4.2, cd1 = -1.6;
+  fb(B.int, F, ca + (side > 0 ? 0 : 2.0), ca + (side > 0 ? 0.7 : 2.7), FL, 1.12, cd0, cd1, DIM(0x5a4636));
+  fb(B.int, F, ca + (side > 0 ? -0.04 : 1.96), ca + (side > 0 ? 0.74 : 2.74), 1.12, 1.17, cd0 - 0.04, cd1 + 0.04, DIM(0x2a2826));
+  const ta = ca + (side > 0 ? 0.35 : 2.35);
+  fb(B.int, F, ta - 0.2, ta + 0.2, 1.17, 1.42, -3.1, -2.7, DIM(0x3a3c3e)); fb(B.int, F, ta - 0.16, ta + 0.16, 1.42, 1.62, -3.05, -3.0, DIM(0x1a1c1e));
+  for (let d = cd0 + 0.3; d < cd1; d += 0.7) circ(ta, d, 0.5, 1.2);
+  pickSpots.push(w2(ta, -3.8).setY(1.22));
+  // shelving runs, mostly stripped
+  const lo = side > 0 ? 1.7 : 4.4, hi = side > 0 ? width - 4.6 : width - 1.7, n = Math.max(1, Math.floor((hi - lo) / 2.7) + 1), step = n > 1 ? (hi - lo) / (n - 1) : 0;
+  for (let k = 0; k < n; k++) {
+    const a = n > 1 ? lo + k * step : (lo + hi) / 2, d0 = -Dp + 2.6, d1 = -3.4 - rr(0, 1.2), mc = DIM(0x8a8a86);
+    if (Math.abs(a - (door.a0 + door.a1) / 2) < 1.2 && d1 > -4.4) continue;
+    fb(B.int, F, a - 0.03, a + 0.03, FL, 1.75, d0, d1, mc); fb(B.int, F, a - 0.5, a + 0.5, FL, FL + 0.16, d0, d1, DIM(0x4a4a48));
+    for (const y of [0.55, 0.95, 1.35]) {
+      fb(B.int, F, a - 0.47, a + 0.47, y, y + 0.03, d0, d1, mc);
+      for (const sd of [-1, 1]) for (let d = d0 + 0.1; d < d1 - 0.25; ) {
+        const w = rr(0.06, 0.13), h = rr(0.09, 0.24), dp = rr(0.08, 0.18), run = rnd() < 0.4 ? ri(2, 6) : 0, c = pick(GOODS); // a few facings of the same product survive together
+        for (let q = 0; q < run; q++) { if (d > d1 - 0.2) break; for (let row = 0; row < (rnd() < 0.5 ? 2 : 1); row++) fb(B.int, F, a + sd * (0.06 + row * (dp + 0.01)), a + sd * (0.06 + row * (dp + 0.01) + dp), y + 0.03, y + 0.03 + h, d, d + w, c); d += w + 0.012; }
+        d += rr(0.05, 0.7);
+      }
+    }
+    for (let d = d0 + 0.4; d < d1; d += 0.8) circ(a, d, 0.56, 1.75);
+    if (rnd() < 0.5) pickSpots.push(w2(a + (rnd() < 0.5 ? 0.25 : -0.25), rr(d0 + 0.5, d1 - 0.5)).setY(0.98 + 0.03));
+  }
+  for (let i = 0; i < 60; i++) { // goods and paper knocked onto the floor
+    const a = rr(0.8, width - 0.8), d = rr(-Dp + 1.2, -0.9), yaw = rnd() * 3, flat = rnd() < 0.5, w = flat ? rr(0.15, 0.4) : rr(0.06, 0.13);
+    const ax = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw)), az = new THREE.Vector3(-Math.sin(yaw), 0, Math.cos(yaw)), p = w2(a, d);
+    p.y = FL + (flat ? 0.004 : w / 2); obox(B.int, p, ax, UP, az, w, flat ? 0.008 : w, flat ? rr(0.12, 0.3) : rr(0.1, 0.26), flat ? DIM(0xb8b2a4) : pick(GOODS));
+  }
+  pickSpots.push(w2(rr(1.5, width - 1.5), -Dp + 1.4).setY(FL + 0.05));
+  if (rnd() < 0.55) lurkSpots.push(w2(width / 2 + rr(-2, 2), -Dp + 1.6));
+  const A = w2(0.4, -0.5), Bc = w2(width - 0.4, -Dp), dA = w2(door.a0 + 0.02, -1.15), dB = w2(door.a1 - 0.02, 0.7);
+  rooms.push({ block, fx: F.p0.x, nx: F.n.x, x0: Math.min(A.x, Bc.x), x1: Math.max(A.x, Bc.x), z0: Math.min(A.z, Bc.z), z1: Math.max(A.z, Bc.z), dx0: Math.min(dA.x, dB.x), dx1: Math.max(dA.x, dB.x), dz0: Math.min(dA.z, dB.z), dz1: Math.max(dA.z, dB.z), cx: (A.x + Bc.x) / 2, cz: (A.z + Bc.z) / 2 });
+}
 const towerSpots = [];
-function building(x0, x1, z0, z1, faces, detail) {
+function building(x0, x1, z0, z1, faces, detail, shop, block) {
   const tall = rnd() < 0.12, floors = tall ? ri(15, 26) : ri(4, 11);
   const wall = pick(WALLS).clone().offsetHSL(0, rr(-0.04, 0.04), rr(-0.04, 0.04));
   const st = { wall, wall2: wall.clone().multiplyScalar(rr(0.82, 1.0)), trim: pick(TRIMS), band: pick([0x24211f, 0x3a342e, 0x2a2f33, 0x4a443c].map(col)), bay: rr(2.8, 3.6), pier: rr(0.55, 1.15), cornice: !tall && rnd() < 0.7, belt: rnd() < 0.4, lintel: rnd() < 0.6 };
@@ -399,10 +477,12 @@ function building(x0, x1, z0, z1, faces, detail) {
   for (const f of faces) {
     const n = new THREE.Vector3(f[0], 0, f[1]), u = new THREE.Vector3(n.z, 0, -n.x);
     const p0 = new THREE.Vector3(f[0] < 0 ? x0 : f[0] > 0 ? x1 : (f[1] < 0 ? x1 : x0), 0, f[1] < 0 ? z0 : f[1] > 0 ? z1 : (f[0] < 0 ? z0 : z1));
-    H = facade({ p0, u, n }, f[0] ? z1 - z0 : x1 - x0, floors, st, detail);
+    const F = { p0, u, n }, isShop = shop && f[0] !== 0;
+    H = facade(F, f[0] ? z1 - z0 : x1 - x0, floors, st, detail, isShop);
+    if (isShop) shopInterior(F, z1 - z0, lastDoor, block);
   }
   const roof = H - 0.7; // solid core behind the facades, plus the party walls
-  _c.set((x0 + x1) / 2, roof / 2, (z0 + z1) / 2); obox(B.wall, _c, new THREE.Vector3(1, 0, 0), UP, new THREE.Vector3(0, 0, 1), x1 - x0 - 0.9, roof, z1 - z0 - 0.02, st.wall2.clone().multiplyScalar(0.8));
+  const base = shop ? 3.62 : 0; _c.set((x0 + x1) / 2, (roof + base) / 2, (z0 + z1) / 2); obox(B.wall, _c, new THREE.Vector3(1, 0, 0), UP, new THREE.Vector3(0, 0, 1), x1 - x0 - 0.9, roof - base, z1 - z0 - 0.02, st.wall2.clone().multiplyScalar(0.8));
   _c.set((x0 + x1) / 2 + rr(-3, 3), roof + 1.3, (z0 + z1) / 2 + rr(-2, 2)); obox(B.wall, _c, new THREE.Vector3(1, 0, 0), UP, new THREE.Vector3(0, 0, 1), 3.2, 2.6, 4, st.wall2);
   if (rnd() < 0.4 && z1 - z0 > 9) towerSpots.push([rr(x0 + 4, x1 - 4), roof, rr(z0 + 3.5, z1 - 3.5)]);
 }
@@ -416,7 +496,8 @@ for (let i = 0; i < NB; i++) for (let j = 0; j < NB; j++) {
     while (z < zEnd - 0.01) {
       let w = rr(10, 24); if (zEnd - (z + w) < 10) w = zEnd - z;
       const faces = [[side, 0]]; if (z === cz - 43.5) faces.push([0, -1]); if (z + w >= zEnd - 0.01) faces.push([0, 1]);
-      building(side < 0 ? cx - 27.5 : cx, side < 0 ? cx : cx + 27.5, z, z + w, faces, detail);
+      const shop = detail && faces.length === 1 && w >= 11 && z <= cz + 22 && z + w > cz + 22; // one enterable shop per row
+      building(side < 0 ? cx - 27.5 : cx, side < 0 ? cx : cx + 27.5, z, z + w, faces, detail, shop, i * NB + j);
       z += w;
     }
   }
@@ -447,7 +528,7 @@ for (const ax of AVES) for (const sz of STS) { // zebra crossings
 }
 
 // obstacles the player and the dead walk around
-const circles = [];
+const circles = [...shopCircles];
 const addCircle = (x, z, r, h = 3) => circles.push({ x, z, r, h });
 
 // ---- abandoned cars
@@ -572,7 +653,7 @@ lampB.build(lampGeometry(), ironMat); sigB.build(signalGeometry(), ironMat);
 
 const unitBox = new THREE.BoxGeometry(1, 1, 1), unitQuad = new THREE.PlaneGeometry(1, 1);
 B.wall.build(unitBox, wallMat); B.stone.build(unitBox, stoneMat); B.walk.build(unitBox, walkMat, false, true);
-B.far.build(unitBox, new THREE.MeshBasicMaterial({ fog: false }), false, false); B.plain.build(unitBox, plainMat); B.iron.build(unitBox, ironMat);
+B.int.build(unitBox, intMat, true, true); B.tile.build(unitBox, tileFloorMat, false, true); B.far.build(unitBox, new THREE.MeshBasicMaterial({ fog: false }), false, false); B.plain.build(unitBox, plainMat); B.iron.build(unitBox, ironMat);
 B.win.build(unitQuad, winMat, false, true); B.sign.build(unitQuad, signMat, false, true);
 
 // a few streetlights still have power
@@ -594,23 +675,50 @@ const ash = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMateria
 function local(x, z) { return [((x + OX) % PX + PX) % PX, ((z + OZ) % PZ + PZ) % PZ]; }
 function groundY(x, z) { if (Math.abs(x) > OX || Math.abs(z) > OZ) return 0; const [mx, mz] = local(x, z); return mx > 9 && mx < 73 && mz > 5.5 && mz < 101.5 ? 0.18 : 0; }
 function insideBuilding(x, z, pad = 0) { if (Math.abs(x) > OX || Math.abs(z) > OZ) return false; const [mx, mz] = local(x, z); return mx > 13.5 - pad && mx < 68.5 + pad && mz > 10 - pad && mz < 97 + pad; }
-function collide(p, r, h = 0) { // push a circle out of buildings, cars and poles
-  const [mx, mz] = local(p.x, p.z), cx = clamp(mx, 13.5, 68.5), cz = clamp(mz, 10, 97), dx = mx - cx, dz = mz - cz, d2 = dx * dx + dz * dz;
-  if (d2 < r * r) {
-    if (d2 > 1e-8) { const d = Math.sqrt(d2); p.x += dx / d * (r - d); p.z += dz / d * (r - d); }
-    else { const e = [mx - 13.5, 68.5 - mx, mz - 10, 97 - mz], k = e.indexOf(Math.min(...e)); if (k === 0) p.x -= e[0] + r; else if (k === 1) p.x += e[1] + r; else if (k === 2) p.z -= e[2] + r; else p.z += e[3] + r; }
+function roomAt(x, z) { for (const R of rooms) { if (Math.abs(x - R.cx) > 16 || Math.abs(z - R.cz) > 16) continue; if ((x > R.dx0 && x < R.dx1 && z > R.dz0 && z < R.dz1) || (x > R.x0 && x < R.x1 && z > R.z0 && z < R.z1)) return R; } return null; }
+function collide(p, r, h = 0) { // push a circle out of buildings, cars and poles; shop rooms and their doorways are walkable
+  let indoors = false;
+  for (const R of rooms) {
+    if (Math.abs(p.x - R.cx) > 20 || Math.abs(p.z - R.cz) > 20) continue;
+    if (p.x > R.dx0 && p.x < R.dx1 && p.z > R.dz0 - 0.3 && p.z < R.dz1 + 0.3) { p.z = clamp(p.z, R.dz0 + r, R.dz1 - r); indoors = true; break; }
+    if (p.x > R.x0 - 0.3 && p.x < R.x1 + 0.3 && p.z > R.z0 - 0.3 && p.z < R.z1 + 0.3) { p.x = clamp(p.x, R.x0 + r, R.x1 - r); p.z = clamp(p.z, R.z0 + r, R.z1 - r); indoors = true; break; }
+  }
+  if (!indoors) {
+    const [mx, mz] = local(p.x, p.z), cx = clamp(mx, 13.5, 68.5), cz = clamp(mz, 10, 97), dx = mx - cx, dz = mz - cz, d2 = dx * dx + dz * dz;
+    if (d2 < r * r) {
+      if (d2 > 1e-8) { const d = Math.sqrt(d2); p.x += dx / d * (r - d); p.z += dz / d * (r - d); }
+      else { const e = [mx - 13.5, 68.5 - mx, mz - 10, 97 - mz], k = e.indexOf(Math.min(...e)); if (k === 0) p.x -= e[0] + r; else if (k === 1) p.x += e[1] + r; else if (k === 2) p.z -= e[2] + r; else p.z += e[3] + r; }
+    }
   }
   for (const c of circles) { const ex = p.x - c.x, ez = p.z - c.z, rr2 = r + c.r; if (Math.abs(ex) < rr2 && Math.abs(ez) < rr2) { const d = Math.hypot(ex, ez); if (d < rr2 && d > 1e-5) { p.x += ex / d * (rr2 - d); p.z += ez / d * (rr2 - d); } } }
   p.x = clamp(p.x, -BOUND_X, BOUND_X); p.z = clamp(p.z, -BOUND_Z, BOUND_Z);
 }
-function rayWorld(ox, oy, oz, dx, dy, dz, maxT) { // nearest hit against building blocks, cars and the ground
-  let best = maxT;
+// how far a ray travels inside a room before a wall stops it, and whether it left through the shop front
+function roomExit(R, x, z, dx, dz) {
+  const back = R.nx > 0 ? R.x0 : R.x1, front = R.fx; let t = Infinity, viaFront = false;
+  if (Math.abs(dx) > 1e-6) { const tb = (back - x) / dx, tf = (front - x) / dx; if (tb > 1e-4) t = tb; if (tf > 1e-4 && tf < t) { t = tf; viaFront = true; } }
+  if (Math.abs(dz) > 1e-6) { const ta = (R.z0 - z) / dz, tb = (R.z1 - z) / dz, tz = Math.max(ta, tb); if (tz > 1e-4 && tz < t) { t = tz; viaFront = false; } }
+  return { t, viaFront };
+}
+function rayWorld(ox, oy, oz, dx, dy, dz, maxT) { // nearest hit against building blocks, shop walls, cars and the ground
+  let best = maxT, skip = -1;
+  const home = roomAt(ox, oz);
+  if (home) {
+    skip = home.block; const e = roomExit(home, ox, oz, dx, dz), ey = oy + dy * e.t;
+    if (!(e.viaFront && ey > 0.7 && ey < 3.5)) best = Math.min(best, e.t);
+    if (dy > 1e-4) best = Math.min(best, (3.5 - oy) / dy);
+  }
   for (let i = 0; i < NB; i++) for (let j = 0; j < NB; j++) {
+    if (i * NB + j === skip) continue;
     const x0 = (i - 2) * PX - 27.5, x1 = x0 + 55, z0 = (j - 2) * PZ - 43.5, z1 = z0 + 87;
     let t0 = 0, t1 = best;
     if (Math.abs(dx) < 1e-6) { if (ox < x0 || ox > x1) continue; } else { let a = (x0 - ox) / dx, b = (x1 - ox) / dx; if (a > b) [a, b] = [b, a]; t0 = Math.max(t0, a); t1 = Math.min(t1, b); }
     if (Math.abs(dz) < 1e-6) { if (oz < z0 || oz > z1) continue; } else { let a = (z0 - oz) / dz, b = (z1 - oz) / dz; if (a > b) [a, b] = [b, a]; t0 = Math.max(t0, a); t1 = Math.min(t1, b); }
-    if (t0 <= t1 && t0 < best && oy + dy * t0 < 110) best = t0;
+    if (!(t0 <= t1 && t0 < best && oy + dy * t0 < 110)) continue;
+    let hit = t0; // an open shop doorway lets the ray carry on to the room's far wall
+    const hx = ox + dx * t0, hz = oz + dz * t0, hy = oy + dy * t0;
+    for (const R of rooms) if (R.block === i * NB + j && Math.abs(hx - R.fx) < 0.05 && hz > R.dz0 && hz < R.dz1 && hy < 2.7) { hit = t0 + roomExit(R, hx - R.nx * 0.01, hz, dx, dz).t; break; }
+    if (hit < best) best = hit;
   }
   const hl = Math.hypot(dx, dz);
   if (hl > 1e-4) for (const c of circles) {
@@ -794,12 +902,19 @@ function updateZombie(z, dt) {
 }
 
 // ---------------------------------------------------------------- player
-const player = { x: 41, z: 44, y: 0, yaw: 0, pitch: 0.03, hp: 100, hurt: 0, ammo: 12, reloading: 0, cool: 0, bob: 0, kick: 0, kills: 0 };
+const torch = new THREE.SpotLight(new THREE.Color().setRGB(1, 0.93, 0.8), 0, 34, 0.5, 0.6, 1.5);
+torch.position.set(0.1, -0.06, -0.8); torch.target.position.set(0.04, -0.08, -6); // starts beyond the hands so it does not bleach them camera.add(torch, torch.target);
+let torchOn = false, torchAuto = false;
+const pickups = pickSpots.map(p => {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.09, 0.13), new THREE.MeshStandardMaterial({ color: 0x55602e, roughness: 0.6, emissive: 0x8a6a20, emissiveIntensity: 0.5 }));
+  m.position.copy(p); m.rotation.y = rnd() * 3; scene.add(m); return { m, taken: false };
+});
+const player = { x: 41, z: 44, y: 0, yaw: 0, pitch: 0.03, hp: 100, hurt: 0, ammo: 12, spare: 24, reloading: 0, cool: 0, bob: 0, kick: 0, kills: 0 };
 const keys = {}; let started = false, dead = false, touchMode = false, firing = false;
 const move = { x: 0, y: 0 };
 function fire() {
   if (!started || dead || player.cool > 0 || player.reloading > 0) return;
-  if (player.ammo <= 0) { sfx.dry(); player.cool = 0.25; reload(); return; }
+  if (player.ammo <= 0) { sfx.dry(); player.cool = 0.25; if (player.spare > 0) reload(); return; }
   player.ammo--; player.cool = 0.19; player.kick = 1; sfx.shot();
   gun.userData.flash.visible = true; gun.userData.flash.material.rotation = Math.random() * 6; gun.userData.light.intensity = 420; setTimeout(() => { gun.userData.flash.visible = false; gun.userData.light.intensity = 0; }, 55);
   const d = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion), o = camera.position;
@@ -817,10 +932,10 @@ function fire() {
     if (best.hp <= 0) { best.dead = 0.001; best.mixer.timeScale = 0; player.kills++; $('kills').textContent = player.kills; }
   }
 }
-function reload() { if (player.reloading > 0 || player.ammo === 12 || dead) return; player.reloading = 1.25; sfx.reload(); }
+function reload() { if (player.reloading > 0 || player.ammo === 12 || player.spare <= 0 || dead) return; player.reloading = 1.25; sfx.reload(); }
 function begin() {
   audioStart(); if (actx && actx.state === 'suspended') actx.resume();
-  if (dead) { dead = false; Object.assign(player, { x: 41, z: 44, yaw: 0, pitch: 0.03, hp: 100, hurt: 0, ammo: 12, kills: 0 }); $('kills').textContent = '0'; zombies.forEach(z => placeZombie(z, 30)); }
+  if (dead) { dead = false; Object.assign(player, { x: 41, z: 44, yaw: 0, pitch: 0.03, hp: 100, hurt: 0, ammo: 12, spare: 24, kills: 0 }); pickups.forEach(p => { p.taken = false; p.m.visible = true; }); $('kills').textContent = '0'; zombies.forEach(z => placeZombie(z, 30)); }
   started = true; $('veil').hidden = true; fp.visible = true;
   for (const id of ['tally', 'cross', 'vitals', 'ammo']) $(id).hidden = false;
   if (touchMode) { for (const id of ['touch', 'fire', 'reload']) $(id).hidden = false; }
@@ -828,7 +943,7 @@ function begin() {
 }
 $('go').addEventListener('click', begin);
 addEventListener('touchstart', () => { touchMode = true; }, { once: true, passive: true });
-addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyR') reload(); if (e.code === 'Enter' && !started && !$('go').disabled) begin(); });
+addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyR') reload(); if (e.code === 'KeyF') torchOn = !torchOn; if (e.code === 'Enter' && !started && !$('go').disabled) begin(); });
 addEventListener('keyup', e => { keys[e.code] = false; });
 let dragging = false;
 canvas.addEventListener('mousedown', e => {
@@ -874,7 +989,14 @@ function updatePlayer(dt) {
   collide(player, 0.42);
   player.y += (groundY(player.x, player.z) - player.y) * Math.min(1, dt * 12);
   player.bob += sp * dt * 1.9; player.kick = Math.max(0, player.kick - dt * 7); player.cool -= dt; player.hurt = Math.max(0, player.hurt - dt * 1.3);
-  if (player.reloading > 0) { player.reloading -= dt; if (player.reloading <= 0) player.ammo = 12; }
+  if (player.reloading > 0) { player.reloading -= dt; if (player.reloading <= 0) { const take = Math.min(12 - player.ammo, player.spare); player.ammo += take; player.spare -= take; } }
+  const indoors = !!roomAt(player.x, player.z);
+  if (indoors !== torchAuto) { torchAuto = indoors; torchOn = indoors; } // the torch comes on by itself indoors; F overrides
+  torch.intensity += ((torchOn ? 95 : 0) - torch.intensity) * Math.min(1, dt * 10);
+  if (started) for (const p of pickups) {
+    if (p.taken) continue; p.m.material.emissiveIntensity = 0.45 + Math.sin(clock.elapsedTime * 4) * 0.3;
+    if (Math.hypot(p.m.position.x - player.x, p.m.position.z - player.z) < 1.15) { p.taken = true; p.m.visible = false; player.spare += 12; sfx.reload(); }
+  }
   if (player.hp < 100 && player.hurt <= 0) player.hp = Math.min(100, player.hp + dt * 2);
   const bob = Math.sin(player.bob * 2) * 0.035 * Math.min(1, sp / 3.4);
   camera.position.set(player.x, player.y + 1.68 + bob, player.z);
@@ -888,7 +1010,7 @@ function updatePlayer(dt) {
     for (const id of ['touch', 'fire', 'reload', 'stick', 'cross']) $(id).hidden = true; fp.visible = false;
   }
   $('hpfill').style.width = clamp(player.hp, 0, 100) + '%';
-  $('rounds').textContent = player.reloading > 0 ? '--' : player.ammo; $('ammonote').textContent = player.reloading > 0 ? 'reloading' : player.ammo === 0 ? 'empty' : '9mm';
+  $('rounds').textContent = player.reloading > 0 ? '--' : player.ammo; $('ammonote').textContent = player.reloading > 0 ? 'reloading' : `${player.spare} spare`;
 }
 
 // ---------------------------------------------------------------- loop
@@ -923,6 +1045,7 @@ function onWalker(gltf) {
   for (let i = 0; i < (COARSE ? 12 : 18); i++) makeZombie();
   // a few placed where the opening view finds them
   [[38, 18], [45, -4], [36, -30], [49, 30]].forEach((p, i) => { const z = zombies[i]; z.root.position.set(p[0], 0, p[1]); z.heading = z.heading2 = rr(-0.5, 0.5); });
+  lurkSpots.forEach((p, i) => { const z = zombies[zombies.length - 1 - i]; if (!z || i > 5) return; z.root.position.set(p.x, 0.18, p.z); z.moving = 0; z.turnT = 1e9; z.lurk = true; });
   $('go').disabled = false; $('go').textContent = 'Enter the city';
 }
 // The model ships as a .glb in the repo; the published artifact can't serve that type, so it falls back to an embedded copy.
@@ -930,4 +1053,4 @@ new GLTFLoader().load('assets/walker.glb', onWalker, undefined, () => {
   import('./walker-data.js').then(m => { const bin = atob(m.default), buf = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i); new GLTFLoader().parse(buf.buffer, '', onWalker, loadFail); }).catch(loadFail);
 });
 
-window.__game = { player, zombies, camera, begin, frame, renderer };
+window.__game = { player, zombies, camera, begin, frame, renderer, rooms, pickups, collide, roomAt, rayWorld };
