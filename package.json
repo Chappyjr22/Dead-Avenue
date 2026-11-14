@@ -1,0 +1,12 @@
+{
+  "name": "dead-avenue",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "npx --yes serve .",
+    "build:artifact": "node tools/build-artifact.mjs"
+  },
+  "devDependencies": {
+    "three": "0.160.0"
+  }
+}
