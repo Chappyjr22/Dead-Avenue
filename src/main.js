@@ -10,11 +10,14 @@ import { fp, pickups, fire, begin, updatePlayer } from './player.js';
 import { buildArms } from './arms.js';
 import { initZombies } from './zombies.js';
 
+import { updateNavigation } from './navigation.js';
+
 let idleT = 0;
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   if (!game.started && !game.dead) { idleT += dt; player.yaw = Math.sin(idleT * 0.12) * 0.22; player.pitch = 0.05; }
   updatePlayer(dt);
+  updateNavigation();
   for (const z of zombies) updateZombie(z, dt);
   sky.position.copy(camera.position);
   const tx = Math.round(player.x / 2) * 2, tz = Math.round(player.z / 2) * 2;
