@@ -2,7 +2,7 @@
 import './streets.js'; // pickups are placed by the city build
 import * as THREE from 'three';
 import { rnd, clamp, $ } from './util.js';
-import { MAG_SIZE, START_SPARE, AMMO_BOX, MOVEMENT } from './data.js';
+import { MAG_SIZE, START_SPARE, AMMO_BOX, MOVEMENT, LOOT } from './data.js';
 import { canvas, scene, camera } from './render.js';
 import { mkCanvas } from './textures.js';
 import { pickSpots, groundY, roomAt, collide, rayWorld } from './world.js';
@@ -33,8 +33,58 @@ function toggleTorch() {
 }
 const pickups = pickSpots.map(p => {
   const m = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.09, 0.13), new THREE.MeshStandardMaterial({ color: 0x55602e, roughness: 0.6, emissive: 0x8a6a20, emissiveIntensity: 0.5 }));
-  m.position.copy(p); m.rotation.y = rnd() * 3; scene.add(m); return { m, taken: false };
+  m.position.copy(p); m.rotation.y = rnd() * 3; scene.add(m); return { m, taken: false, name: 'PISTOL AMMO', amount: AMMO_BOX };
 });
+// Choose one visible item near the centre of the player's view. Revalidate on
+// interaction so turning away, moving out of reach, or a wall cannot grant loot.
+const lootDirection = new THREE.Vector3(), lootOffset = new THREE.Vector3();
+let lootToastTime = 0;
+function findLoot() {
+  if (!game.started || game.dead || player.hp <= 0) return null;
+  camera.getWorldDirection(lootDirection);
+  let best = null, score = -Infinity;
+  for (const item of pickups) {
+    if (item.taken) continue;
+    lootOffset.copy(item.m.position).sub(camera.position);
+    const distance = lootOffset.length();
+    if (distance < 0.01 || distance > LOOT.identifyRange) continue;
+    lootOffset.multiplyScalar(1 / distance);
+    const alignment = lootDirection.dot(lootOffset);
+    if (alignment < LOOT.minAimDot) continue;
+    const o = camera.position, d = lootOffset;
+    if (rayWorld(o.x, o.y, o.z, d.x, d.y, d.z, distance) < distance - 0.12) continue;
+    const rank = alignment - distance * 0.001;
+    if (rank > score) { score = rank; best = { item, distance }; }
+  }
+  return best;
+}
+function updateLoot(dt = 0) {
+  const target = findLoot();
+  for (const item of pickups) if (!item.taken) {
+    item.m.material.emissiveIntensity = target?.item === item ? 1.5 : 0.45 + Math.sin(clock.elapsedTime * 4) * 0.3;
+  }
+  $('loot').hidden = !target;
+  if (target) {
+    const reachable = target.distance <= LOOT.reach;
+    $('loot-name').textContent = target.item.name;
+    $('loot-amount').textContent = target.item.amount + ' rounds';
+    $('interact').disabled = !reachable;
+    $('interact').textContent = reachable ? (game.touchMode ? 'PICK UP' : '[E] PICK UP') : 'MOVE CLOSER';
+    $('interact').setAttribute('aria-label', 'Pick up ' + target.item.amount + ' rounds of pistol ammo');
+  }
+  lootToastTime = Math.max(0, lootToastTime - dt);
+  $('loot-toast').hidden = lootToastTime <= 0 || !game.started || game.dead;
+}
+function interact() {
+  const target = findLoot();
+  if (!target || target.distance > LOOT.reach) return;
+  const { item } = target;
+  item.taken = true; item.m.visible = false; player.spare += item.amount;
+  sfx.reload();
+  $('loot-toast').textContent = '+' + item.amount + ' pistol rounds'; lootToastTime = 1.5;
+  $('ammonote').textContent = player.spare + ' spare';
+  updateLoot();
+}
 const keys = {};
 const move = { x: 0, y: 0 };
 let aimWanted = false, sprintWanted = false, aimBlend = 0, sprintBlend = 0, shotQueued = false;
@@ -85,7 +135,7 @@ function begin() {
 }
 $('go').addEventListener('click', begin);
 addEventListener('touchstart', () => { game.touchMode = true; }, { once: true, passive: true });
-addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyR') reload(); if (e.code === 'KeyQ' && !e.repeat) setAim(!aimWanted); if (e.code === 'KeyF' && !e.repeat) toggleTorch(); if (e.code === 'Enter' && !game.started && !$('go').disabled) begin(); });
+addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyE' && !e.repeat) interact(); if (e.code === 'KeyR') reload(); if (e.code === 'KeyQ' && !e.repeat) setAim(!aimWanted); if (e.code === 'KeyF' && !e.repeat) toggleTorch(); if (e.code === 'Enter' && !game.started && !$('go').disabled) begin(); });
 addEventListener('keyup', e => { keys[e.code] = false; });
 let dragging = false;
 canvas.addEventListener('mousedown', e => {
@@ -143,11 +193,14 @@ $('flashlight').addEventListener('touchstart', e => { e.preventDefault(); toggle
 $('fire').addEventListener('click', () => fire());
 $('reload').addEventListener('click', () => reload());
 $('flashlight').addEventListener('click', toggleTorch);
+$('interact').addEventListener('touchstart', e => { e.preventDefault(); interact(); }, { passive: false });
+$('interact').addEventListener('click', interact);
 for (const [id, action] of [['aim', () => setAim(!aimWanted)], ['sprint', toggleSprint]]) {
   $(id).addEventListener('touchstart', e => { e.preventDefault(); action(); }, { passive: false });
   $(id).addEventListener('click', action);
 }
 function resetInput() {
+  $('loot').hidden = $('loot-toast').hidden = true; lootToastTime = 0;
   aimWanted = sprintWanted = shotQueued = false; aimBlend = sprintBlend = 0;
   player.aiming = player.sprinting = false;
   camera.fov = MOVEMENT.hipFov; camera.updateProjectionMatrix();
@@ -187,10 +240,6 @@ function updatePlayer(dt) {
   $('flashlight').setAttribute('aria-pressed', String(torchOn));
   $('flashlight').textContent = torchOn ? 'LIGHT ON' : 'LIGHT OFF';
   torch.intensity += ((torchOn && game.started ? 95 : 0) - torch.intensity) * Math.min(1, dt * 10);
-  if (game.started) for (const p of pickups) {
-    if (p.taken) continue; p.m.material.emissiveIntensity = 0.45 + Math.sin(clock.elapsedTime * 4) * 0.3;
-    if (Math.hypot(p.m.position.x - player.x, p.m.position.z - player.z) < 1.15) { p.taken = true; p.m.visible = false; player.spare += AMMO_BOX; sfx.reload(); }
-  }
   if (player.hp < 100 && player.hurt <= 0) player.hp = Math.min(100, player.hp + dt * 2);
   const bob = Math.sin(player.bob * 2) * 0.022 * Math.min(1, sp / MOVEMENT.walk) * (1 - aimBlend * 0.9);
   camera.position.set(player.x, player.y + 1.68 + bob, player.z);
@@ -212,6 +261,7 @@ function updatePlayer(dt) {
     $('title').textContent = 'They got you'; $('blurb').textContent = `You put down ${player.kills} before the avenue took you.`; $('go').textContent = 'Go again'; $('veil').hidden = false;
     for (const id of ['touch', 'fire', 'reload', 'flashlight', 'aim', 'sprint', 'stick', 'cross']) $(id).hidden = true; fp.visible = false;
   }
+  updateLoot(dt);
   if (shotQueued && sprintBlend <= 0.08) fire();
   $('hpfill').style.width = clamp(player.hp, 0, 100) + '%';
   $('rounds').textContent = player.reloading > 0 ? '--' : player.ammo; $('ammonote').textContent = player.reloading > 0 ? 'reloading' : `${player.spare} spare`;

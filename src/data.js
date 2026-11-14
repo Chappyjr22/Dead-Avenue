@@ -44,3 +44,6 @@ export const SHOP_TYPES = [
 
 // Movement speeds in metres/second and camera field of view in degrees.
 export const MOVEMENT = { walk: 2.5, sprint: 5.6, aim: 1.5, hipFov: 68, aimFov: 52 };
+
+// Loot is identified at a distance but must be deliberately collected within reach.
+export const LOOT = { identifyRange: 5, reach: 2.4, minAimDot: 0.975 };
