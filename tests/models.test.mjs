@@ -97,3 +97,22 @@ test('ragdolls tip fully onto the ground for front, back and side hits',()=>{
   assert.ok(v.ragdoll.sleeping);
  }
 });
+
+test('joint limits correct reverse knee bends and eject hands from the torso',()=>{
+ const v=createZombieVisual(prepareZombieModel(city));
+ updateZombieVisual(v,.2,{speed:.8});updateZombieVisual(v,0,{dead:true});
+ const r=v.ragdoll,j=r.joints.find(j=>j.leg), frame=r.frameQuaternion(r.names.Hips);
+ const front=new THREE.Vector3(0,0,1).applyQuaternion(frame);
+ const axis=j.c.p.clone().sub(j.a.p).normalize();
+ j.b.p.copy(j.a.p).addScaledVector(axis,j.upper*.7).addScaledVector(front,-.15);
+ for(let i=0;i<20;i++)r.solveJoints();
+ const bend=j.b.p.clone().sub(j.a.p);bend.addScaledVector(axis,-bend.dot(axis));
+ assert.ok(bend.dot(front)>0,'knee is corrected to its permitted bending direction');
+ const hand=r.names.LeftHand;
+ hand.p.copy(r.names.Spine1.p).add(new THREE.Vector3(.001,0,0));
+ r.separateTorso();
+ const torso=r.names.Neck.p.clone().sub(r.names.Hips.p);
+ const offset=hand.p.clone().sub(r.names.Hips.p);
+ const closest=r.names.Hips.p.clone().addScaledVector(torso,THREE.MathUtils.clamp(offset.dot(torso)/torso.lengthSq(),0,1));
+ assert.ok(hand.p.distanceTo(closest)>=.17+hand.radius-1e-6);
+});
