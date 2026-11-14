@@ -15,8 +15,9 @@ Controls: WASD to move, Shift to run, mouse to look, click to fire, R to reload.
 ## Layout
 
 - `index.html` – page, HUD and styles
-- `game.js` – city generator, rendering, player, zombies, sound
-- `assets/walker.glb` – humanoid model used for the zombies
+- `src/` – the game, split into modules (see `CLAUDE.md` for what each one holds)
+- `src/data.js` – colours, names and other plain values that are safe to edit
+- `assets/walker.glb` – humanoid model used for the zombies and the player's arms
 - `tools/build-artifact.mjs` – packages the game for publishing as a Claude artifact (`npm run build:artifact`)
 - `tools/shot.mjs` – headless screenshot harness for checking the look (needs `npm install` and Playwright)
 
