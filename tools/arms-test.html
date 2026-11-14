@@ -1,0 +1,18 @@
+<!doctype html><html><body style="margin:0;background:#888"><canvas id="c"></canvas>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { buildArms, GUN_POS } from '../arms.js';
+const r = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true }); r.setSize(innerWidth, innerHeight);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x777b80);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 2.2)); const d = new THREE.DirectionalLight(0xffffff, 2.5); d.position.set(-1, 2, 1); scene.add(d);
+const cam = new THREE.PerspectiveCamera(66, innerWidth / innerHeight, 0.05, 50);
+const gun = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.04, 0.2), new THREE.MeshStandardMaterial({ color: 0x222226 })); gun.position.copy(GUN_POS).add(new THREE.Vector3(0, 0.03, -0.08)); scene.add(gun);
+const grip = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.1, 0.045), gun.material); grip.position.copy(GUN_POS).add(new THREE.Vector3(0, -0.045, -0.012)); grip.rotation.x = 0.25; scene.add(grip);
+new GLTFLoader().load('../assets/walker.glb', g => {
+  const opts = JSON.parse(decodeURIComponent(location.hash.slice(1) || '{}'));
+  scene.add(buildArms(g.scene, opts.arms || {}));
+  window.snap = (pos, look) => { cam.position.set(...pos); cam.lookAt(...look); r.render(scene, cam); return r.domElement.toDataURL('image/jpeg', 0.9); };
+});
+</script></body></html>

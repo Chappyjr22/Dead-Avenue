@@ -7,6 +7,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { buildArms, GUN_POS } from './arms.js';
 
 // ---------------------------------------------------------------- utilities
 let seed = 20261114;
@@ -661,7 +662,8 @@ const gun = new THREE.Group();
   flash.position.set(0, 0.036, -0.24); flash.scale.setScalar(0.22); flash.visible = false; gun.add(flash); gun.userData.flash = flash;
   const fl = new THREE.PointLight(new THREE.Color().setRGB(1, 0.7, 0.35), 0, 26, 1.6); fl.position.set(0, 0.05, -0.5); gun.add(fl); gun.userData.light = fl;
 }
-gun.rotation.order = 'YXZ'; gun.scale.setScalar(0.85); camera.add(gun); gun.visible = false;
+const fp = new THREE.Group(); // everything the player holds: pistol plus arms
+gun.scale.setScalar(0.85); gun.position.copy(GUN_POS); fp.add(gun); camera.add(fp); fp.visible = false;
 
 // ---------------------------------------------------------------- sound (all synthesised)
 let actx = null, master = null, noiseBuf = null;
@@ -819,7 +821,7 @@ function reload() { if (player.reloading > 0 || player.ammo === 12 || dead) retu
 function begin() {
   audioStart(); if (actx && actx.state === 'suspended') actx.resume();
   if (dead) { dead = false; Object.assign(player, { x: 41, z: 44, yaw: 0, pitch: 0.03, hp: 100, hurt: 0, ammo: 12, kills: 0 }); $('kills').textContent = '0'; zombies.forEach(z => placeZombie(z, 30)); }
-  started = true; $('veil').hidden = true; gun.visible = true;
+  started = true; $('veil').hidden = true; fp.visible = true;
   for (const id of ['tally', 'cross', 'vitals', 'ammo']) $(id).hidden = false;
   if (touchMode) { for (const id of ['touch', 'fire', 'reload']) $(id).hidden = false; }
   else { try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* drag-to-look still works */ } }
@@ -877,12 +879,13 @@ function updatePlayer(dt) {
   const bob = Math.sin(player.bob * 2) * 0.035 * Math.min(1, sp / 3.4);
   camera.position.set(player.x, player.y + 1.68 + bob, player.z);
   camera.rotation.set(player.pitch + player.kick * 0.035, player.yaw, 0);
-  gun.position.set(0.21 + Math.cos(player.bob) * 0.008 * Math.min(1, sp / 3), -0.2 + bob * 0.25 - (player.reloading > 0 ? Math.sin(Math.min(1, (1.25 - player.reloading) / 1.25) * Math.PI) * 0.22 : 0), -0.5 + player.kick * 0.06);
-  gun.rotation.set(player.kick * 0.32 + (player.reloading > 0 ? -0.7 * Math.sin(Math.min(1, (1.25 - player.reloading) / 1.25) * Math.PI) : 0), 0.07, 0);
+  const rl = player.reloading > 0 ? Math.sin(Math.min(1, (1.25 - player.reloading) / 1.25) * Math.PI) : 0, mv = Math.min(1, sp / 3.4);
+  fp.position.set(Math.cos(player.bob) * 0.006 * mv, bob * 0.3 - rl * 0.3 - player.kick * 0.004, player.kick * 0.035);
+  fp.rotation.set(player.kick * 0.07 - rl * 0.55, Math.sin(player.bob) * 0.006 * mv, 0);
   if (player.hp <= 0 && !dead && started) {
     dead = true; started = false; firing = false; if (document.exitPointerLock) document.exitPointerLock();
     $('title').textContent = 'They got you'; $('blurb').textContent = `You put down ${player.kills} before the avenue took you.`; $('go').textContent = 'Go again'; $('veil').hidden = false;
-    for (const id of ['touch', 'fire', 'reload', 'stick', 'cross']) $(id).hidden = true; gun.visible = false;
+    for (const id of ['touch', 'fire', 'reload', 'stick', 'cross']) $(id).hidden = true; fp.visible = false;
   }
   $('hpfill').style.width = clamp(player.hp, 0, 100) + '%';
   $('rounds').textContent = player.reloading > 0 ? '--' : player.ammo; $('ammonote').textContent = player.reloading > 0 ? 'reloading' : player.ammo === 0 ? 'empty' : '9mm';
@@ -911,6 +914,7 @@ frame();
 const loadFail = () => { $('go').disabled = false; $('go').textContent = 'Enter the city'; $('note').textContent = 'The walkers failed to load, so the streets are empty this time.'; };
 function onWalker(gltf) {
   zProto = gltf.scene;
+  fp.add(buildArms(gltf.scene));
   for (const c of gltf.animations) {
     let clip = c;
     if (c.name === 'sad_pose' || c.name === 'sneak_pose') { THREE.AnimationUtils.makeClipAdditive(clip); clip = THREE.AnimationUtils.subclip(clip, clip.name, 2, 3, 30); }
