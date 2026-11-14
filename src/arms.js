@@ -1,5 +1,5 @@
 // First-person arms: the walker model worn by the camera, with gloves and sleeves painted on
-// and a right-handed pistol grip solved once at start-up.
+// and a supported two-handed pistol grip solved once at start-up.
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
@@ -9,7 +9,7 @@ const GRIP = new THREE.Vector3(0, -0.045, -0.012); // grip centre in the pistol'
 const DEFAULTS = {
   body: [0, -1.5, 0.04],
   R: { wrist: [0.022, -0.025, 0.025], fingers: [-0.18, 0.55, -1], palm: [-1, -0.12, 0.05], pole: [0.9, -1, 0.3], curl: [0.7, 1.5, 1.55, 1.6], thumb: 1.1 },
-  L: { wrist: [-0.07, -0.035, 0.07], fingers: [0.62, 0.3, -1], palm: [1, 0.15, 0.3], pole: [-0.9, -1, 0.3], curl: [1.0, 1.05, 1.1, 1.15], thumb: 0.85 }
+  L: { wrist: [-0.044, -0.043, 0.015], fingers: [0.25, 0.5, -1], palm: [1, 0.05, 0.15], pole: [-0.9, -1, 0.3], curl: [1.35, 1.4, 1.45, 1.5], thumb: 0.85 }
 };
 
 const v = a => new THREE.Vector3(a[0], a[1], a[2]);
@@ -31,18 +31,6 @@ function paint(mesh) { // jacket sleeves, leather gloves
     let b = 0, bw = -1, hand = 0; for (let j = 0; j < 4; j++) { const w = sw.getComponent(i, j), name = mesh.skeleton.bones[si.getComponent(i, j)].name; if (/Hand/.test(name)) hand += w; if (w > bw) { bw = w; b = si.getComponent(i, j); } }
     c.copy(hand > 0.5 ? glove : hand > 0.15 ? cuff : sleeve); a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b;
   }
-  // Remove left-arm triangles rather than collapsing bones, which leaves stretched seams.
-  const hidden = i => {
-    let weight = 0;
-    for (let j = 0; j < 4; j++) if (/Left(Shoulder|Arm|ForeArm|Hand)/.test(mesh.skeleton.bones[si.getComponent(i, j)].name)) weight += sw.getComponent(i, j);
-    return weight > 0.5;
-  };
-  const index = g.index, kept = [];
-  for (let i = 0; i < (index?.count ?? n); i += 3) {
-    const tri = [0, 1, 2].map(j => index ? index.getX(i + j) : i + j);
-    if (!tri.some(hidden)) kept.push(...tri);
-  }
-  g.setIndex(kept);
   g.setAttribute('color', new THREE.BufferAttribute(a, 3)); mesh.geometry = g;
   mesh.material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0, envMapIntensity: 0.5 });
   mesh.castShadow = false; mesh.receiveShadow = false; mesh.frustumCulled = false;
@@ -56,7 +44,7 @@ export function buildArms(proto, opts = {}) {
   for (const name of ['Head', 'Neck']) if (bones[name]) bones[name].scale.setScalar(0.001); // nothing in front of the lens
   rig.updateMatrixWorld(true);
   const grip = GUN_POS.clone().add(GRIP.clone().multiplyScalar(0.85));
-  for (const side of ['Right']) {
+  for (const side of ['Right', 'Left']) {
     const p = P[side[0]], arm = bones[side + 'Arm'], fore = bones[side + 'ForeArm'], hand = bones[side + 'Hand'];
     // rest-pose facts, taken before anything moves: T-pose palms face the floor
     const down = new THREE.Vector3(0, -1, 0), restHand = wq(hand), restF = bones[side + 'HandMiddle1'].position.clone().normalize().applyQuaternion(restHand);
@@ -80,6 +68,7 @@ export function buildArms(proto, opts = {}) {
     }
   }
   bones.RightHand.scale.setScalar(0.82);
+  bones.LeftHand.scale.setScalar(0.82);
   rig.updateMatrixWorld(true);
   // Seat the trigger finger and thumb against the Makarov, rather than curling
   // every digit into the same fist. Targets are relative to the weapon mount.

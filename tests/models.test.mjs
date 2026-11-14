@@ -44,9 +44,9 @@ test('new zombies contain all four required source clips and a derived idle pose
  assert.ok(city.scene.children.length>0);
 });
 
-test('one-handed viewmodel removes left-arm faces and seats the trigger finger', async()=>{
+test('two-handed viewmodel retains its support arm and seated trigger finger', async()=>{
  const arms=buildArms((await loadGeometry('assets/walker.glb')).scene);
- let indexTip;
+ let indexTip, supportVertices=0;
  arms.updateMatrixWorld(true);
  arms.traverse(o=>{
   if(o.name==='mixamorigRightHandIndex4') indexTip=o.getWorldPosition(new THREE.Vector3());
@@ -55,8 +55,9 @@ test('one-handed viewmodel removes left-arm faces and seats the trigger finger',
   for(const i of o.geometry.index.array){
    let left=0;
    for(let j=0;j<4;j++) if(/Left(Shoulder|Arm|ForeArm|Hand)/.test(o.skeleton.bones[si.getComponent(i,j)].name)) left+=sw.getComponent(i,j);
-   assert.ok(left<=.5,'no visible left-arm geometry');
+   if(left>.5) supportVertices++;
   }
  });
+ assert.ok(supportVertices>0,'support arm remains visible');
  assert.ok(indexTip.distanceTo(new THREE.Vector3(.075,-.135,-.50))<.025,'finger reaches the trigger');
 });
