@@ -41,3 +41,6 @@ export const SHOP_TYPES = [
   { name: 'cafe', signs: ['COFFEE', 'DINER', 'FLOWERS'], goods: [0x6a4028, 0xd8c8a8, 0xb03a2e, 0x3f8a4a, 0xd4a82a, 0xe0d8c8], fill: 0.3, chillers: true, wall: [0xa09078, 0x9a8c70, 0x8a9690] },
   { name: 'barber', signs: ['BARBER', 'LAUNDROMAT'], goods: [0x2e5fa8, 0xb03a2e, 0xd8d4c8, 0x2a8a8a, 0x3a3a48], fill: 0.2, chillers: false, wall: [0x8a9690, 0x9a9a92, 0x7a8890] },
 ];
+
+// Movement speeds in metres/second and camera field of view in degrees.
+export const MOVEMENT = { walk: 2.5, sprint: 5.6, aim: 1.5, hipFov: 68, aimFov: 52 };

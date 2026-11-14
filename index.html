@@ -69,6 +69,9 @@ body {
 #flashlight { width: 64px; height: 54px; right: max(20px, env(safe-area-inset-right, 0px)); top: calc(16px + env(safe-area-inset-top, 0px)); border-radius: 12px; font-size: 12px; }
 #flashlight[aria-pressed="true"] { border-color: var(--ember); background: #51351f; }
 #reload { width: 60px; height: 60px; right: calc(max(20px, env(safe-area-inset-right, 0px)) + 96px); bottom: calc(72px + env(safe-area-inset-bottom, 0px)); font-size: 12px; }
+#aim { width: 60px; height: 60px; right: calc(max(20px, env(safe-area-inset-right, 0px)) + 96px); bottom: calc(144px + env(safe-area-inset-bottom, 0px)); font-size: 13px; }
+#sprint { width: 66px; height: 48px; left: max(24px, env(safe-area-inset-left, 0px)); bottom: calc(150px + env(safe-area-inset-bottom, 0px)); border-radius: 14px; font-size: 12px; }
+#aim[aria-pressed="true"], #sprint[aria-pressed="true"] { border-color: var(--ember); background: #51351f; }
 #veil {
   position: fixed; inset: 0; z-index: 5; display: flex; align-items: flex-end;
   padding-block: 32px; padding-left: max(24px, env(safe-area-inset-left, 0px)); padding-right: max(24px, env(safe-area-inset-right, 0px));
@@ -98,6 +101,8 @@ body {
 <button class="tbtn" id="fire" hidden>FIRE</button>
 <button class="tbtn" id="flashlight" aria-label="Toggle flashlight" aria-pressed="false" hidden>LIGHT OFF</button>
 <button class="tbtn" id="reload" hidden>RELOAD</button>
+<button class="tbtn" id="aim" aria-label="Toggle aim down sights" aria-pressed="false" hidden>ADS</button>
+<button class="tbtn" id="sprint" aria-label="Toggle sprint" aria-pressed="false" hidden>SPRINT</button>
 
 <div class="hud" id="tally" hidden>Put down <span id="kills">0</span></div>
 <div class="hud" id="cross" hidden></div>
@@ -110,9 +115,9 @@ body {
     <p id="blurb">Look test for the zombie survival game: one empty stretch of city at dusk, a pistol, and a few of them still walking.</p>
     <dl id="keys">
       <dt>WASD</dt><dd>Move, hold Shift to run</dd>
-      <dt>Mouse</dt><dd>Look, click to fire</dd>
+      <dt>Mouse</dt><dd>Look, left click fires; hold right click or tap Q to aim</dd>
       <dt>R / F</dt><dd>Reload / torch</dd>
-      <dt>Phone</dt><dd>Left thumb moves; drag FIRE to aim and shoot. LIGHT toggles flashlight.</dd>
+      <dt>Phone</dt><dd>Left thumb moves; drag FIRE to look and shoot. Tap ADS to aim, SPRINT to run.</dd>
     </dl>
     <button id="go" disabled>Loading the city</button>
     <span id="note">Sound starts when you enter.</span>

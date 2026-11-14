@@ -2,7 +2,7 @@
 import './streets.js'; // pickups are placed by the city build
 import * as THREE from 'three';
 import { rnd, clamp, $ } from './util.js';
-import { MAG_SIZE, START_SPARE, AMMO_BOX } from './data.js';
+import { MAG_SIZE, START_SPARE, AMMO_BOX, MOVEMENT } from './data.js';
 import { canvas, scene, camera } from './render.js';
 import { mkCanvas } from './textures.js';
 import { pickSpots, groundY, roomAt, collide, rayWorld } from './world.js';
@@ -37,8 +37,23 @@ const pickups = pickSpots.map(p => {
 });
 const keys = {};
 const move = { x: 0, y: 0 };
+let aimWanted = false, sprintWanted = false, aimBlend = 0, sprintBlend = 0, shotQueued = false;
+const lookScale = () => 1 - aimBlend * 0.55;
+function setAim(active) {
+  if (!game.started || game.dead) return;
+  aimWanted = active;
+  if (active) sprintWanted = false;
+}
+function toggleSprint() {
+  if (!game.started || game.dead) return;
+  sprintWanted = !sprintWanted;
+  if (sprintWanted) aimWanted = false;
+}
 function fire() {
   if (!game.started || game.dead || player.cool > 0 || player.reloading > 0) return;
+  sprintWanted = false;
+  if (sprintBlend > 0.08) { shotQueued = true; return; } // Raise the weapon before the shot can leave it.
+  shotQueued = false;
   if (player.ammo <= 0) { sfx.dry(); player.cool = 0.25; if (player.spare > 0) reload(); return; }
   player.ammo--; player.cool = 0.19; player.kick = 1; sfx.shot();
   gun.userData.flash.visible = true; gun.userData.flash.material.rotation = Math.random() * 6; gun.userData.light.intensity = 420; setTimeout(() => { gun.userData.flash.visible = false; gun.userData.light.intensity = 0; }, 55);
@@ -57,7 +72,7 @@ function fire() {
     if (best.hp <= 0) { best.dead = 0.001; best.path = []; best.navPending = null; player.kills++; $('kills').textContent = player.kills; }
   }
 }
-function reload() { if (player.reloading > 0 || player.ammo === MAG_SIZE || player.spare <= 0 || game.dead) return; player.reloading = 1.25; sfx.reload(); }
+function reload() { if (player.reloading > 0 || player.ammo === MAG_SIZE || player.spare <= 0 || game.dead) return; aimWanted = sprintWanted = shotQueued = false; player.reloading = 1.25; sfx.reload(); }
 function begin() {
   if (!game.ready) return;
   audioStart();
@@ -65,23 +80,26 @@ function begin() {
   if (game.dead) { game.dead = false; Object.assign(player, { x: 41, z: 44, yaw: 0, pitch: 0.03, hp: 100, hurt: 0, ammo: MAG_SIZE, spare: START_SPARE, kills: 0, reloading: 0, cool: 0, kick: 0 }); pickups.forEach(p => { p.taken = false; p.m.visible = true; }); $('kills').textContent = '0'; zombies.forEach(z => placeZombie(z, 30)); }
   game.started = true; $('veil').hidden = true; fp.visible = true;
   for (const id of ['tally', 'cross', 'vitals', 'ammo']) $(id).hidden = false;
-  if (game.touchMode) { for (const id of ['touch', 'fire', 'reload', 'flashlight']) $(id).hidden = false; }
+  if (game.touchMode) { for (const id of ['touch', 'fire', 'reload', 'flashlight', 'aim', 'sprint']) $(id).hidden = false; }
   else { try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* drag-to-look still works */ } }
 }
 $('go').addEventListener('click', begin);
 addEventListener('touchstart', () => { game.touchMode = true; }, { once: true, passive: true });
-addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyR') reload(); if (e.code === 'KeyF' && !e.repeat) toggleTorch(); if (e.code === 'Enter' && !game.started && !$('go').disabled) begin(); });
+addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyR') reload(); if (e.code === 'KeyQ' && !e.repeat) setAim(!aimWanted); if (e.code === 'KeyF' && !e.repeat) toggleTorch(); if (e.code === 'Enter' && !game.started && !$('go').disabled) begin(); });
 addEventListener('keyup', e => { keys[e.code] = false; });
 let dragging = false;
 canvas.addEventListener('mousedown', e => {
   if (!game.started || game.dead) return;
+  if (e.button === 2) { setAim(true); return; }
+  if (e.button !== 0) return;
   if (document.pointerLockElement === canvas) { game.firing = true; fire(); }
   else { dragging = true; try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (err) { /* ignore */ } game.firing = true; fire(); }
 });
-addEventListener('mouseup', () => { dragging = false; game.firing = false; });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+addEventListener('mouseup', e => { if (e.button === 2) setAim(false); else if (e.button === 0) { dragging = false; game.firing = false; } });
 addEventListener('mousemove', e => {
   if (!game.started || game.dead) return;
-  if (document.pointerLockElement === canvas || dragging) { player.yaw -= e.movementX * 0.0022; player.pitch = clamp(player.pitch - e.movementY * 0.0022, -1.3, 1.3); }
+  if (document.pointerLockElement === canvas || dragging) { player.yaw -= e.movementX * 0.0022 * lookScale(); player.pitch = clamp(player.pitch - e.movementY * 0.0022 * lookScale(), -1.3, 1.3); }
 });
 // touch: left half is a floating stick, right half looks
 const touch = $('touch'), stick = $('stick'); let moveId = null, lookId = null, mo = [0, 0], lp = [0, 0];
@@ -96,7 +114,7 @@ touch.addEventListener('touchmove', e => {
   e.preventDefault();
   for (const t of e.changedTouches) {
     if (t.identifier === moveId) { let dx = (t.clientX - mo[0]) / 46, dy = (t.clientY - mo[1]) / 46; const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; } move.x = dx; move.y = dy; stick.firstElementChild.style.transform = `translate(${dx * 30}px, ${dy * 30}px)`; }
-    else if (t.identifier === lookId) { player.yaw -= (t.clientX - lp[0]) * 0.0052; player.pitch = clamp(player.pitch - (t.clientY - lp[1]) * 0.0052, -1.3, 1.3); lp = [t.clientX, t.clientY]; }
+    else if (t.identifier === lookId) { player.yaw -= (t.clientX - lp[0]) * 0.0052 * lookScale(); player.pitch = clamp(player.pitch - (t.clientY - lp[1]) * 0.0052 * lookScale(), -1.3, 1.3); lp = [t.clientX, t.clientY]; }
   }
 }, { passive: false });
 const endTouch = e => { for (const t of e.changedTouches) { if (t.identifier === moveId) { moveId = null; move.x = move.y = 0; stick.hidden = true; } if (t.identifier === lookId) lookId = null; } };
@@ -112,8 +130,8 @@ $('fire').addEventListener('touchstart', e => {
 $('fire').addEventListener('touchmove', e => {
   e.preventDefault();
   for (const t of e.changedTouches) if (t.identifier === fireId) {
-    player.yaw -= (t.clientX-firePos[0])*0.0052;
-    player.pitch = clamp(player.pitch-(t.clientY-firePos[1])*0.0052,-1.3,1.3);
+    player.yaw -= (t.clientX-firePos[0])*0.0052 * lookScale();
+    player.pitch = clamp(player.pitch-(t.clientY-firePos[1])*0.0052 * lookScale(),-1.3,1.3);
     firePos = [t.clientX,t.clientY];
   }
 }, { passive: false });
@@ -125,18 +143,39 @@ $('flashlight').addEventListener('touchstart', e => { e.preventDefault(); toggle
 $('fire').addEventListener('click', () => fire());
 $('reload').addEventListener('click', () => reload());
 $('flashlight').addEventListener('click', toggleTorch);
+for (const [id, action] of [['aim', () => setAim(!aimWanted)], ['sprint', toggleSprint]]) {
+  $(id).addEventListener('touchstart', e => { e.preventDefault(); action(); }, { passive: false });
+  $(id).addEventListener('click', action);
+}
 function resetInput() {
+  aimWanted = sprintWanted = shotQueued = false; aimBlend = sprintBlend = 0;
+  player.aiming = player.sprinting = false;
+  camera.fov = MOVEMENT.hipFov; camera.updateProjectionMatrix();
+  for (const id of ['aim', 'sprint']) $(id).setAttribute('aria-pressed', 'false');
   for (const k of Object.keys(keys)) delete keys[k];
   move.x=move.y=0; moveId=lookId=fireId=null; dragging=false; game.firing=false; stick.hidden=true;
 }
 addEventListener('blur', resetInput);
+document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement && !game.touchMode) resetInput(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden) resetInput(); });
 
 function updatePlayer(dt) {
   let fx = 0, fz = 0;
   if (game.started && !game.dead) { fx = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + move.x; fz = (keys.KeyS ? 1 : 0) - (keys.KeyW ? 1 : 0) + move.y; }
-  const l = Math.hypot(fx, fz), run = keys.ShiftLeft || keys.ShiftRight || (game.touchMode && l > 0.92);
-  const sp = (run ? 6.2 : 3.4) * Math.min(1, l); if (l > 1e-3) { fx /= l; fz /= l; }
+  const l = Math.hypot(fx, fz);
+  const aiming = aimWanted && player.reloading <= 0 && game.started && !game.dead;
+  const run = (sprintWanted || keys.ShiftLeft || keys.ShiftRight) && fz < -0.2 && l > 0.2 && !aiming && !game.firing && !shotQueued && player.cool <= 0 && player.reloading <= 0;
+  player.aiming = aiming; player.sprinting = !!run;
+  const blend = 1 - Math.exp(-dt * 14);
+  aimBlend += ((aiming ? 1 : 0) - aimBlend) * blend;
+  sprintBlend += ((run ? 1 : 0) - sprintBlend) * blend;
+  const sp = (aiming ? MOVEMENT.aim : run ? MOVEMENT.sprint : MOVEMENT.walk) * Math.min(1, l);
+  if (l > 1e-3) { fx /= l; fz /= l; }
+  $('aim').setAttribute('aria-pressed', String(aiming));
+  $('sprint').setAttribute('aria-pressed', String(!!run || sprintWanted));
+  $('cross').style.opacity = String(1 - Math.max(aimBlend, sprintBlend));
+  camera.fov = MOVEMENT.hipFov + (MOVEMENT.aimFov - MOVEMENT.hipFov) * aimBlend + 3 * sprintBlend;
+  camera.updateProjectionMatrix();
   const s = Math.sin(player.yaw), c = Math.cos(player.yaw);
   player.x += (fx * c + fz * s) * sp * dt; player.z += (-fx * s + fz * c) * sp * dt;
   collide(player, 0.42);
@@ -153,17 +192,27 @@ function updatePlayer(dt) {
     if (Math.hypot(p.m.position.x - player.x, p.m.position.z - player.z) < 1.15) { p.taken = true; p.m.visible = false; player.spare += AMMO_BOX; sfx.reload(); }
   }
   if (player.hp < 100 && player.hurt <= 0) player.hp = Math.min(100, player.hp + dt * 2);
-  const bob = Math.sin(player.bob * 2) * 0.035 * Math.min(1, sp / 3.4);
+  const bob = Math.sin(player.bob * 2) * 0.022 * Math.min(1, sp / MOVEMENT.walk) * (1 - aimBlend * 0.9);
   camera.position.set(player.x, player.y + 1.68 + bob, player.z);
   camera.rotation.set(player.pitch + player.kick * 0.035, player.yaw, 0);
-  const rl = player.reloading > 0 ? Math.sin(Math.min(1, (1.25 - player.reloading) / 1.25) * Math.PI) : 0, mv = Math.min(1, sp / 3.4);
-  fp.position.set(Math.cos(player.bob) * 0.006 * mv, bob * 0.3 - rl * 0.3 - player.kick * 0.004, player.kick * 0.035);
-  fp.rotation.set(player.kick * 0.07 - rl * 0.55, Math.sin(player.bob) * 0.006 * mv, 0);
+  const rl = player.reloading > 0 ? Math.sin(Math.min(1, (1.25 - player.reloading) / 1.25) * Math.PI) : 0;
+  const mv = Math.min(1, sp / MOVEMENT.walk), steady = 1 - aimBlend;
+  // The whole grip moves together. ADS seats the actual front/rear sights on
+  // the camera axis; sprint lowers and rolls the pistol with a running cadence.
+  fp.position.set(
+    -GUN_POS.x * aimBlend + 0.045 * sprintBlend + Math.cos(player.bob) * (0.006 * mv * steady + 0.012 * sprintBlend),
+    0.0772 * aimBlend + 0.015 * sprintBlend + bob * 0.3 * steady - rl * 0.3 - player.kick * 0.004,
+    0.04 * aimBlend + 0.025 * sprintBlend + player.kick * 0.035);
+  fp.rotation.set(
+    player.kick * (0.07 - 0.04 * aimBlend) - rl * 0.55 - 0.16 * sprintBlend + Math.sin(player.bob * 2) * 0.025 * sprintBlend,
+    Math.sin(player.bob) * 0.006 * mv * steady,
+    0.25 * sprintBlend + Math.cos(player.bob) * 0.018 * sprintBlend);
   if (player.hp <= 0 && !game.dead && game.started) {
     game.dead = true; game.started = false; resetInput(); if (document.exitPointerLock) document.exitPointerLock();
     $('title').textContent = 'They got you'; $('blurb').textContent = `You put down ${player.kills} before the avenue took you.`; $('go').textContent = 'Go again'; $('veil').hidden = false;
-    for (const id of ['touch', 'fire', 'reload', 'flashlight', 'stick', 'cross']) $(id).hidden = true; fp.visible = false;
+    for (const id of ['touch', 'fire', 'reload', 'flashlight', 'aim', 'sprint', 'stick', 'cross']) $(id).hidden = true; fp.visible = false;
   }
+  if (shotQueued && sprintBlend <= 0.08) fire();
   $('hpfill').style.width = clamp(player.hp, 0, 100) + '%';
   $('rounds').textContent = player.reloading > 0 ? '--' : player.ammo; $('ammonote').textContent = player.reloading > 0 ? 'reloading' : `${player.spare} spare`;
 }
