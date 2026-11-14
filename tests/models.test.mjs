@@ -29,9 +29,9 @@ test('zombies have independent skeletons and transition through walk, hit, attac
  const before=bone(b.body).quaternion.toArray();
  hitZombieVisual(a);updateZombieVisual(a,.1,{speed:.8});assert.equal(a.current,'hit');
  updateZombieVisual(a,.6,{attacking:true});assert.equal(a.current,'attack');
- updateZombieVisual(a,5,{dead:true});assert.equal(a.current,'death');assert.equal(a.actions.death.paused,true);
+ for(let i=0;i<360;i++)updateZombieVisual(a,1/60,{dead:true});assert.equal(a.current,'ragdoll');assert.equal(a.ragdoll.sleeping,true);
  assert.deepEqual(bone(b.body).quaternion.toArray(),before);
- resetZombieVisual(a);assert.equal(a.current,'idle');assert.equal(a.actions.death.isRunning(),false);
+ resetZombieVisual(a);assert.equal(a.current,'idle');assert.equal(a.ragdoll,null);
  updateZombieVisual(a,.2,{speed:.8});assert.equal(a.current,'walk');
  for(const visual of [a,b]){visual.root.updateMatrixWorld(true);visual.root.traverse(o=>{assert.ok(o.matrixWorld.elements.every(Number.isFinite));});}
 });
@@ -39,7 +39,7 @@ test('new zombies contain all four required source clips and a derived idle pose
  assert.equal(city.animations.length,4);
  const model=prepareZombieModel(city);
  assert.throws(()=>prepareZombieModel({...city,animations:[]}),/missing/);
- assert.equal(model.clips.death.name,'BossDeath');
+ assert.equal(model.clips.death,undefined);
  assert.ok(model.clips.idle.tracks.length>0);
  // Textures are intentionally skipped only by the geometry test loader.
  assert.ok(city.scene.children.length>0);
@@ -103,4 +103,25 @@ test('rifle ADS puts the rear notch and the front sight post on the camera axis'
  for(const p of [rear,post]){assert.ok(p.z<-.12,'in front of the eye');assert.ok(Math.hypot(p.x,p.y)/-p.z<.002,'within 0.002 rad of the aim point');}
  assert.ok(post.z<rear.z);
  const pistol=WEAPONS.makarov;assert.deepEqual(pistol.mount.pos,[GUN_POS.x,GUN_POS.y,GUN_POS.z]);assert.equal(pistol.ads[0],-GUN_POS.x);
+});
+
+test('ragdolls settle above terrain, retain limb lengths, respect obstacles and reset their skeleton',()=>{
+ const model=prepareZombieModel(city),v=createZombieVisual(model);
+ v.root.position.set(8,.18,-4);v.root.rotation.y=.7;v.root.scale.setScalar(1.06);
+ updateZombieVisual(v,.23,{speed:1});
+ v.deathImpulse=new THREE.Vector3(1,0,.3);v.hitHeight=1.65;
+ let collisions=0;
+ for(let i=0;i<360;i++)updateZombieVisual(v,1/60,{dead:true,ground:()=>.18,collide:p=>{collisions++;p.x=Math.min(p.x,8.8);}});
+ assert.ok(collisions>0);assert.ok(v.ragdoll.sleeping);
+ for(const p of v.ragdoll.points){
+  assert.ok(p.p.toArray().every(Number.isFinite));
+  assert.ok(p.p.y>=.18+p.radius-1e-6);
+  assert.ok(p.p.x<=8.8+1e-6);
+ }
+ const hip=v.ragdoll.points.find(p=>p.name==='Hips');
+ assert.ok(hip.p.y<.55,'hips collapsed to ground');
+ for(const l of v.ragdoll.links) if(l.min===l.max) assert.ok(Math.abs(l.a.p.distanceTo(l.b.p)-l.min)<.045,'constraint length');
+ resetZombieVisual(v);v.root.updateMatrixWorld(true);
+ const fresh=createZombieVisual(model);resetZombieVisual(fresh);
+ for(let i=0;i<v.rest.length;i++) assert.ok(v.rest[i].bone.position.distanceTo(fresh.rest[i].bone.position)<1e-5,'respawn restores idle offsets');
 });
