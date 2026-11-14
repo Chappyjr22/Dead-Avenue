@@ -2,7 +2,7 @@
 import './streets.js'; // pickups are placed by the city build
 import * as THREE from 'three';
 import { rnd, clamp, $ } from './util.js';
-import { MAG_SIZE, START_SPARE, AMMO_BOX, MOVEMENT, LOOT } from './data.js';
+import { MAG_SIZE, START_SPARE, AMMO_BOX, MOVEMENT, LOOT, PLAYER_CONTROL } from './data.js';
 import { canvas, scene, camera } from './render.js';
 import { mkCanvas } from './textures.js';
 import { pickSpots, groundY, roomAt, collide, rayWorld } from './world.js';
@@ -80,7 +80,7 @@ function interact() {
   if (!target || target.distance > LOOT.reach) return;
   const { item } = target;
   item.taken = true; item.m.visible = false; player.spare += item.amount;
-  sfx.reload();
+  sfx.pickup();
   $('loot-toast').textContent = '+' + item.amount + ' pistol rounds'; lootToastTime = 1.5;
   $('ammonote').textContent = player.spare + ' spare';
   updateLoot();
@@ -88,6 +88,19 @@ function interact() {
 const keys = {};
 const move = { x: 0, y: 0 };
 let aimWanted = false, sprintWanted = false, aimBlend = 0, sprintBlend = 0, shotQueued = false;
+let jumpHeight = 0, verticalSpeed = 0, crouchWanted = false, crouchBlend = 0, landingDip = 0;
+function jump() {
+  if (!game.started || game.dead || jumpHeight > 0.001 || verticalSpeed > 0) return;
+  crouchWanted = false;
+  verticalSpeed = PLAYER_CONTROL.jumpSpeed;
+  player.airborne = true;
+  sfx.jump();
+}
+function toggleCrouch() {
+  if (!game.started || game.dead || jumpHeight > 0.001 || verticalSpeed > 0) return;
+  crouchWanted = !crouchWanted;
+  if (crouchWanted) sprintWanted = false;
+}
 const lookScale = () => 1 - aimBlend * 0.55;
 function setAim(active) {
   if (!game.started || game.dead) return;
@@ -97,14 +110,14 @@ function setAim(active) {
 function toggleSprint() {
   if (!game.started || game.dead) return;
   sprintWanted = !sprintWanted;
-  if (sprintWanted) aimWanted = false;
+  if (sprintWanted) { aimWanted = false; crouchWanted = false; }
 }
 function fire() {
   if (!game.started || game.dead || player.cool > 0 || player.reloading > 0) return;
   sprintWanted = false;
   if (sprintBlend > 0.08) { shotQueued = true; return; } // Raise the weapon before the shot can leave it.
   shotQueued = false;
-  if (player.ammo <= 0) { sfx.dry(); player.cool = 0.25; if (player.spare > 0) reload(); return; }
+  if (player.ammo <= 0) { sfx.dry(); if (player.spare <= 0) sfx.voice('empty'); player.cool = 0.25; if (player.spare > 0) reload(); return; }
   player.ammo--; player.cool = 0.19; player.kick = 1; sfx.shot();
   gun.userData.flash.visible = true; gun.userData.flash.material.rotation = Math.random() * 6; gun.userData.light.intensity = 420; setTimeout(() => { gun.userData.flash.visible = false; gun.userData.light.intensity = 0; }, 55);
   const d = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion), o = camera.position;
@@ -122,20 +135,21 @@ function fire() {
     if (best.hp <= 0) { best.dead = 0.001; best.path = []; best.navPending = null; player.kills++; $('kills').textContent = player.kills; }
   }
 }
-function reload() { if (player.reloading > 0 || player.ammo === MAG_SIZE || player.spare <= 0 || game.dead) return; aimWanted = sprintWanted = shotQueued = false; player.reloading = 1.25; sfx.reload(); }
+function reload() { if (player.reloading > 0 || player.ammo === MAG_SIZE || player.spare <= 0 || game.dead) return; aimWanted = sprintWanted = shotQueued = false; player.reloading = 1.25; sfx.reload(); sfx.voice('reload'); }
 function begin() {
   if (!game.ready) return;
   audioStart();
   resetInput();
+  jumpHeight = verticalSpeed = crouchBlend = landingDip = 0; player.airborne = player.crouching = false;
   if (game.dead) { game.dead = false; Object.assign(player, { x: 41, z: 44, yaw: 0, pitch: 0.03, hp: 100, hurt: 0, ammo: MAG_SIZE, spare: START_SPARE, kills: 0, reloading: 0, cool: 0, kick: 0 }); pickups.forEach(p => { p.taken = false; p.m.visible = true; }); $('kills').textContent = '0'; zombies.forEach(z => placeZombie(z, 30)); }
   game.started = true; $('veil').hidden = true; fp.visible = true;
   for (const id of ['tally', 'cross', 'vitals', 'ammo']) $(id).hidden = false;
-  if (game.touchMode) { for (const id of ['touch', 'fire', 'reload', 'flashlight', 'aim', 'sprint']) $(id).hidden = false; }
+  if (game.touchMode) { for (const id of ['touch', 'fire', 'reload', 'flashlight', 'aim', 'sprint', 'jump', 'crouch']) $(id).hidden = false; }
   else { try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* drag-to-look still works */ } }
 }
 $('go').addEventListener('click', begin);
 addEventListener('touchstart', () => { game.touchMode = true; }, { once: true, passive: true });
-addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyE' && !e.repeat) interact(); if (e.code === 'KeyR') reload(); if (e.code === 'KeyQ' && !e.repeat) setAim(!aimWanted); if (e.code === 'KeyF' && !e.repeat) toggleTorch(); if (e.code === 'Enter' && !game.started && !$('go').disabled) begin(); });
+addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Space') { e.preventDefault?.(); if (!e.repeat) jump(); } if ((e.code === 'KeyC' || e.code === 'ControlLeft') && !e.repeat) { e.preventDefault?.(); toggleCrouch(); } if (e.code === 'KeyE' && !e.repeat) interact(); if (e.code === 'KeyR') reload(); if (e.code === 'KeyQ' && !e.repeat) setAim(!aimWanted); if (e.code === 'KeyF' && !e.repeat) toggleTorch(); if (e.code === 'Enter' && !game.started && !$('go').disabled) begin(); });
 addEventListener('keyup', e => { keys[e.code] = false; });
 let dragging = false;
 canvas.addEventListener('mousedown', e => {
@@ -195,16 +209,18 @@ $('reload').addEventListener('click', () => reload());
 $('flashlight').addEventListener('click', toggleTorch);
 $('interact').addEventListener('touchstart', e => { e.preventDefault(); interact(); }, { passive: false });
 $('interact').addEventListener('click', interact);
-for (const [id, action] of [['aim', () => setAim(!aimWanted)], ['sprint', toggleSprint]]) {
+for (const [id, action] of [['aim', () => setAim(!aimWanted)], ['sprint', toggleSprint], ['jump', jump], ['crouch', toggleCrouch]]) {
   $(id).addEventListener('touchstart', e => { e.preventDefault(); action(); }, { passive: false });
   $(id).addEventListener('click', action);
 }
 function resetInput() {
+  sfx.stopVoice();
   $('loot').hidden = $('loot-toast').hidden = true; lootToastTime = 0;
+  crouchWanted = false;
   aimWanted = sprintWanted = shotQueued = false; aimBlend = sprintBlend = 0;
   player.aiming = player.sprinting = false;
   camera.fov = MOVEMENT.hipFov; camera.updateProjectionMatrix();
-  for (const id of ['aim', 'sprint']) $(id).setAttribute('aria-pressed', 'false');
+  for (const id of ['aim', 'sprint', 'crouch']) $(id).setAttribute('aria-pressed', 'false');
   for (const k of Object.keys(keys)) delete keys[k];
   move.x=move.y=0; moveId=lookId=fireId=null; dragging=false; game.firing=false; stick.hidden=true;
 }
@@ -217,13 +233,16 @@ function updatePlayer(dt) {
   if (game.started && !game.dead) { fx = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + move.x; fz = (keys.KeyS ? 1 : 0) - (keys.KeyW ? 1 : 0) + move.y; }
   const l = Math.hypot(fx, fz);
   const aiming = aimWanted && player.reloading <= 0 && game.started && !game.dead;
-  const run = (sprintWanted || keys.ShiftLeft || keys.ShiftRight) && fz < -0.2 && l > 0.2 && !aiming && !game.firing && !shotQueued && player.cool <= 0 && player.reloading <= 0;
+  const run = (sprintWanted || keys.ShiftLeft || keys.ShiftRight) && fz < -0.2 && l > 0.2 && !crouchWanted && !aiming && !game.firing && !shotQueued && player.cool <= 0 && player.reloading <= 0;
   player.aiming = aiming; player.sprinting = !!run;
   const blend = 1 - Math.exp(-dt * 14);
   aimBlend += ((aiming ? 1 : 0) - aimBlend) * blend;
   sprintBlend += ((run ? 1 : 0) - sprintBlend) * blend;
-  const sp = (aiming ? MOVEMENT.aim : run ? MOVEMENT.sprint : MOVEMENT.walk) * Math.min(1, l);
+  player.crouching = crouchWanted;
+  crouchBlend += ((crouchWanted ? 1 : 0) - crouchBlend) * blend;
+  const sp = (crouchWanted ? PLAYER_CONTROL.crouchSpeed : aiming ? MOVEMENT.aim : run ? MOVEMENT.sprint : MOVEMENT.walk) * Math.min(1, l);
   if (l > 1e-3) { fx /= l; fz /= l; }
+  $('crouch').setAttribute('aria-pressed', String(crouchWanted));
   $('aim').setAttribute('aria-pressed', String(aiming));
   $('sprint').setAttribute('aria-pressed', String(!!run || sprintWanted));
   $('cross').style.opacity = String(1 - Math.max(aimBlend, sprintBlend));
@@ -232,8 +251,16 @@ function updatePlayer(dt) {
   const s = Math.sin(player.yaw), c = Math.cos(player.yaw);
   player.x += (fx * c + fz * s) * sp * dt; player.z += (-fx * s + fz * c) * sp * dt;
   collide(player, 0.42);
+  if (jumpHeight > 0 || verticalSpeed > 0) {
+    // Integrate a ballistic arc, then land once. Horizontal obstacles still block movement.
+    jumpHeight += verticalSpeed * dt - 0.5 * PLAYER_CONTROL.gravity * dt * dt;
+    verticalSpeed -= PLAYER_CONTROL.gravity * dt;
+    if (jumpHeight <= 0) { jumpHeight = verticalSpeed = 0; landingDip = 0.07; sfx.land(); }
+  }
+  player.airborne = jumpHeight > 0 || verticalSpeed > 0;
+  landingDip *= Math.exp(-dt * 13);
   player.y += (groundY(player.x, player.z) - player.y) * Math.min(1, dt * 12);
-  player.bob += sp * dt * 1.9; player.kick = Math.max(0, player.kick - dt * 7); player.cool -= dt; player.hurt = Math.max(0, player.hurt - dt * 1.3);
+  player.bob += sp * dt * 1.9 * (player.airborne ? 0 : 1); player.kick = Math.max(0, player.kick - dt * 7); player.cool -= dt; player.hurt = Math.max(0, player.hurt - dt * 1.3);
   if (player.reloading > 0) { player.reloading -= dt; if (player.reloading <= 0) { const take = Math.min(MAG_SIZE - player.ammo, player.spare); player.ammo += take; player.spare -= take; } }
   const indoors = !!roomAt(player.x, player.z);
   if (indoors !== torchAuto) { torchAuto = indoors; if (!torchManual) torchOn = indoors; } // the torch comes on by itself indoors; F overrides
@@ -241,8 +268,8 @@ function updatePlayer(dt) {
   $('flashlight').textContent = torchOn ? 'LIGHT ON' : 'LIGHT OFF';
   torch.intensity += ((torchOn && game.started ? 95 : 0) - torch.intensity) * Math.min(1, dt * 10);
   if (player.hp < 100 && player.hurt <= 0) player.hp = Math.min(100, player.hp + dt * 2);
-  const bob = Math.sin(player.bob * 2) * 0.022 * Math.min(1, sp / MOVEMENT.walk) * (1 - aimBlend * 0.9);
-  camera.position.set(player.x, player.y + 1.68 + bob, player.z);
+  const bob = Math.sin(player.bob * 2) * 0.022 * Math.min(1, sp / MOVEMENT.walk) * (1 - aimBlend * 0.9) * (player.airborne ? 0 : 1) * (1 - 0.6 * crouchBlend);
+  camera.position.set(player.x, player.y + PLAYER_CONTROL.standEye + jumpHeight - (PLAYER_CONTROL.standEye - PLAYER_CONTROL.crouchEye) * crouchBlend + bob - landingDip, player.z);
   camera.rotation.set(player.pitch + player.kick * 0.035, player.yaw, 0);
   const rl = player.reloading > 0 ? Math.sin(Math.min(1, (1.25 - player.reloading) / 1.25) * Math.PI) : 0;
   const mv = Math.min(1, sp / MOVEMENT.walk), steady = 1 - aimBlend;
@@ -250,16 +277,16 @@ function updatePlayer(dt) {
   // the camera axis; sprint lowers and rolls the pistol with a running cadence.
   fp.position.set(
     -GUN_POS.x * aimBlend + 0.045 * sprintBlend + Math.cos(player.bob) * (0.006 * mv * steady + 0.012 * sprintBlend),
-    0.0772 * aimBlend + 0.015 * sprintBlend + bob * 0.3 * steady - rl * 0.3 - player.kick * 0.004,
+    0.0772 * aimBlend + 0.015 * sprintBlend + bob * 0.3 * steady - landingDip * 0.45 - rl * 0.3 - player.kick * 0.004,
     0.04 * aimBlend + 0.025 * sprintBlend + player.kick * 0.035);
   fp.rotation.set(
     player.kick * (0.07 - 0.04 * aimBlend) - rl * 0.55 - 0.16 * sprintBlend + Math.sin(player.bob * 2) * 0.025 * sprintBlend,
     Math.sin(player.bob) * 0.006 * mv * steady,
     0.25 * sprintBlend + Math.cos(player.bob) * 0.018 * sprintBlend);
   if (player.hp <= 0 && !game.dead && game.started) {
-    game.dead = true; game.started = false; resetInput(); if (document.exitPointerLock) document.exitPointerLock();
+    game.dead = true; game.started = false; jumpHeight = verticalSpeed = landingDip = 0; player.airborne = false; resetInput(); if (document.exitPointerLock) document.exitPointerLock();
     $('title').textContent = 'They got you'; $('blurb').textContent = `You put down ${player.kills} before the avenue took you.`; $('go').textContent = 'Go again'; $('veil').hidden = false;
-    for (const id of ['touch', 'fire', 'reload', 'flashlight', 'aim', 'sprint', 'stick', 'cross']) $(id).hidden = true; fp.visible = false;
+    for (const id of ['touch', 'fire', 'reload', 'flashlight', 'aim', 'sprint', 'jump', 'crouch', 'stick', 'cross']) $(id).hidden = true; fp.visible = false;
   }
   updateLoot(dt);
   if (shotQueued && sprintBlend <= 0.08) fire();
