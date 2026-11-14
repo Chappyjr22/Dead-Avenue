@@ -8,6 +8,21 @@ const rooms = [], pickSpots = [], lurkSpots = [];
 const AVES = [-205, -123, -41, 41, 123, 205], STS = [-267.5, -160.5, -53.5, 53.5, 160.5, 267.5];
 const circles = [];
 const addCircle = (x, z, r, h = 3) => circles.push({ x, z, r, h });
+// Obstacles bucketed into a coarse grid, so a query only looks at the handful nearby instead of all of them.
+// Each circle is filed under every cell its padded bounds touch; one cell lookup then covers any agent standing in it.
+const CELL = 4, PAD = 1.5, EMPTY = [];
+let grid = null, gridCount = -1;
+function clearCircleGrid() { grid = null; }
+function nearCircles(x, z) {
+  if (!grid || gridCount !== circles.length) { // rebuilt whenever obstacles are added or removed
+    grid = new Map(); gridCount = circles.length;
+    for (const c of circles) {
+      const x0 = Math.floor((c.x - c.r - PAD) / CELL), x1 = Math.floor((c.x + c.r + PAD) / CELL), z0 = Math.floor((c.z - c.r - PAD) / CELL), z1 = Math.floor((c.z + c.r + PAD) / CELL);
+      for (let i = x0; i <= x1; i++) for (let j = z0; j <= z1; j++) { const k = i * 4096 + j; let a = grid.get(k); if (!a) grid.set(k, a = []); a.push(c); }
+    }
+  }
+  return grid.get(Math.floor(x / CELL) * 4096 + Math.floor(z / CELL)) || EMPTY;
+}
 
 function local(x, z) { return [((x + OX) % PX + PX) % PX, ((z + OZ) % PZ + PZ) % PZ]; }
 function groundY(x, z) { if (Math.abs(x) > OX || Math.abs(z) > OZ) return 0; const [mx, mz] = local(x, z); return mx > 9 && mx < 73 && mz > 5.5 && mz < 101.5 ? 0.18 : 0; }
@@ -27,7 +42,7 @@ function collide(p, r, h = 0) { // push a circle out of buildings, cars and pole
       else { const e = [mx - 13.5, 68.5 - mx, mz - 10, 97 - mz], k = e.indexOf(Math.min(...e)); if (k === 0) p.x -= e[0] + r; else if (k === 1) p.x += e[1] + r; else if (k === 2) p.z -= e[2] + r; else p.z += e[3] + r; }
     }
   }
-  for (const c of circles) { const ex = p.x - c.x, ez = p.z - c.z, rr2 = r + c.r; if (Math.abs(ex) < rr2 && Math.abs(ez) < rr2) { const d = Math.hypot(ex, ez); if (d < rr2 && d > 1e-5) { p.x += ex / d * (rr2 - d); p.z += ez / d * (rr2 - d); } } }
+  for (const c of nearCircles(p.x, p.z)) { const ex = p.x - c.x, ez = p.z - c.z, rr2 = r + c.r; if (Math.abs(ex) < rr2 && Math.abs(ez) < rr2) { const d = Math.hypot(ex, ez); if (d < rr2 && d > 1e-5) { p.x += ex / d * (rr2 - d); p.z += ez / d * (rr2 - d); } } }
   p.x = clamp(p.x, -BOUND_X, BOUND_X); p.z = clamp(p.z, -BOUND_Z, BOUND_Z);
 }
 // how far a ray travels inside a room before a wall stops it, and whether it left through the shop front
@@ -66,4 +81,4 @@ function rayWorld(ox, oy, oz, dx, dy, dz, maxT) { // nearest hit against buildin
   return best;
 }
 
-export { PX, PZ, OX, OZ, NB, BOUND_X, BOUND_Z, G, FH, rooms, pickSpots, lurkSpots, AVES, STS, circles, addCircle, local, groundY, insideBuilding, roomAt, collide, roomExit, rayWorld };
+export { PX, PZ, OX, OZ, NB, BOUND_X, BOUND_Z, G, FH, rooms, pickSpots, lurkSpots, AVES, STS, circles, addCircle, nearCircles, clearCircleGrid, local, groundY, insideBuilding, roomAt, collide, roomExit, rayWorld };
