@@ -3,7 +3,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { buildArms, GUN_POS } from '../arms.js';
+import { buildArms, GUN_POS } from '../src/arms.js';
 const r = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true }); r.setSize(innerWidth, innerHeight);
 const scene = new THREE.Scene(); scene.background = new THREE.Color(0x777b80);
 scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 2.2)); const d = new THREE.DirectionalLight(0xffffff, 2.5); d.position.set(-1, 2, 1); scene.add(d);
