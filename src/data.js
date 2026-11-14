@@ -28,8 +28,34 @@ export const ZOMBIE_OUTFITS = [
   { skin: 0x70665a, shirt: 0x3f3550, legs: 0x4a4438, shoe: 0x1a1512, sleeve: false }
 ];
 
-// Ammunition.
-export const MAG_SIZE = 12, START_SPARE = 24, AMMO_BOX = 12;
+// Ammunition. Ammo boxes found in shops hold pistol rounds.
+export const MAG_SIZE = 12, START_SPARE = 24, AMMO_BOX = 12, AMMO_BOX_WEAPON = 'makarov';
+
+// Weapons the player carries, in key order (1, 2, ...). A zombie has 3 health.
+// damage: per body hit; headshot: per hit above 1.5 m. auto: keeps firing while held, one shot per
+// interval seconds. kick: visual recoil impulse; climb: radians the aim rises per shot (yaw: random sideways drift).
+// reload: seconds. adsFov: camera field of view when aiming. model: file under assets/, without .glb.
+// mount: where the weapon sits at the hip, relative to the camera (position, rotation, scale);
+// hipTurn: an extra turn of the whole held view at the hip, gone when aiming; ads: how far the held view
+// moves to bring the sights onto the camera axis; reloadPose: how far the held view drops, tips down and rolls
+// at the middle of a reload. muzzle: flash position in the weapon's own space.
+export const WEAPONS = {
+  makarov: {
+    name: 'Makarov', short: 'PISTOL', model: 'makarov', mag: MAG_SIZE, spare: START_SPARE,
+    damage: 1, headshot: 3, auto: false, interval: 0.19, kick: 1, climb: 0, yaw: 0, reload: 1.25, adsFov: 52,
+    mount: { pos: [0.075, -0.125, -0.42], rot: [0, 0, 0], scale: 0.85 }, hipTurn: [0, 0, 0], ads: [-0.075, 0.0772, 0.04], reloadPose: [0.3, 0.55, 0],
+    muzzle: [0, 0.041, -0.2], flash: 0.22, sound: 'shot'
+  },
+  ak47: {
+    name: 'AK-47', short: 'RIFLE', model: 'weapons/ak47', mag: 30, spare: 90,
+    damage: 2, headshot: 3, auto: true, interval: 0.1, kick: 1.35, climb: 0.007, yaw: 0.003, reload: 2.2, adsFov: 42,
+    mount: { pos: [0.2214, -0.1412, -0.5793], rot: [-0.0082, 0, 0], scale: 0.85 }, hipTurn: [0, 0.18, 0.05], ads: [-0.2192, 0.1051, 0.4], reloadPose: [0.06, 0.14, 0.38],
+    muzzle: [0, -0.006, -0.35], flash: 0.3, sound: 'rifle'
+  }
+};
+export const START_WEAPON = 'makarov';
+// Seconds to change weapon: the held one lowers for half of it, the new one rises for the rest.
+export const WEAPON_SWITCH = 0.5;
 
 // Medkits: carried from the start, the most you can hold, health restored per use, and the seconds a use takes.
 export const MEDKIT = { start: 1, max: 3, heal: 40, time: 1.0 };

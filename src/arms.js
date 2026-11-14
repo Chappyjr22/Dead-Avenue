@@ -2,14 +2,33 @@
 // and a supported two-handed pistol grip solved once at start-up.
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { WEAPONS } from './data.js';
 
-export const GUN_POS = new THREE.Vector3(0.075, -0.125, -0.42);
-const GRIP = new THREE.Vector3(0, -0.045, -0.012); // grip centre in the pistol's own space
+export const GUN_POS = new THREE.Vector3(...WEAPONS.makarov.mount.pos);
+const GRIP = [0, -0.045, -0.012]; // grip centre in the pistol's own space
 
+// A pose holds both hands onto one weapon. mount places the weapon (as in data.js); each hand's at is a
+// point in the weapon's own space and wrist offsets it in camera space; fingers/palm/pole steer the hand
+// and elbow; digits seat individual finger bones, aimed at camera-space points relative to the mount position.
 const DEFAULTS = {
   body: [0, -1.62, 0.1], // shoulders sit low and back so the forearms rise into view instead of filling it
-  R: { wrist: [0.022, -0.025, 0.025], fingers: [-0.18, 0.55, -1], palm: [-1, -0.12, 0.05], pole: [0.9, -1, 0.3], curl: [0.7, 1.5, 1.55, 1.6], thumb: 1.1 },
-  L: { wrist: [-0.044, -0.043, 0.015], fingers: [0.25, 0.5, -1], palm: [1, 0.05, 0.15], pole: [-0.9, -1, 0.3], curl: [1.35, 1.4, 1.45, 1.5], thumb: 0.85 }
+  twist: 0, // turns the torso: negative brings the left shoulder forward
+  mount: WEAPONS.makarov.mount,
+  R: { at: GRIP, wrist: [0.022, -0.025, 0.025], fingers: [-0.18, 0.55, -1], palm: [-1, -0.12, 0.05], pole: [0.9, -1, 0.3], curl: [0.7, 1.5, 1.55, 1.6], thumb: 1.1,
+    // the trigger finger and thumb lie against the Makarov, rather than curling every digit into the same fist
+    digits: { Index: [[0.018, 0, -0.075], [0.003, -0.006, -0.085], [-0.004, -0.014, -0.075]], Thumb: [[-0.020, -0.008, -0.026], [-0.021, -0.010, -0.053], [-0.015, -0.018, -0.070]] } },
+  L: { at: GRIP, wrist: [-0.044, -0.043, 0.015], fingers: [0.25, 0.5, -1], palm: [1, 0.05, 0.15], pole: [-0.9, -1, 0.3], curl: [1.35, 1.4, 1.45, 1.5], thumb: 0.85, digits: {} }
+};
+// Per-weapon poses, merged over DEFAULTS. The AK-47: right hand on the pistol grip with the index finger
+// at the trigger, left hand under the handguard ahead of the magazine.
+export const POSES = {
+  makarov: {},
+  ak47: {
+    body: [0.02, -1.6, -0.1], twist: -0.6, mount: WEAPONS.ak47.mount,
+    R: { at: [0, -0.085, 0.3], wrist: [0.03, -0.035, 0.05], fingers: [-0.35, 0.35, -1], palm: [-1, -0.2, 0.1], pole: [1, -0.7, 0.4], curl: [0.4, 1.5, 1.55, 1.6], thumb: 1.0,
+      digits: { Index: [[0.008, -0.03, 0.215], [0.002, -0.042, 0.225], [-0.004, -0.05, 0.232]], Thumb: [[-0.022, -0.035, 0.235], [-0.024, -0.03, 0.215], [-0.02, -0.024, 0.2]] } },
+    L: { at: [0, -0.02, -0.06], wrist: [-0.03, -0.06, 0.07], fingers: [0.5, 0.45, -0.8], palm: [0.6, 0.75, 0.1], pole: [-0.6, -1, 0.2], curl: [1.1, 1.2, 1.3, 1.4], thumb: 0.5, digits: {} }
+  }
 };
 
 const v = a => new THREE.Vector3(a[0], a[1], a[2]);
@@ -40,10 +59,10 @@ export function buildArms(proto, opts = {}) {
   const P = { ...DEFAULTS, ...opts, R: { ...DEFAULTS.R, ...(opts.R || {}) }, L: { ...DEFAULTS.L, ...(opts.L || {}) } };
   const rig = SkeletonUtils.clone(proto), bones = {};
   rig.traverse(o => { if (o.isBone) bones[o.name.replace('mixamorig', '')] = o; if (o.isMesh) paint(o); });
-  rig.rotation.y = Math.PI; rig.position.copy(v(P.body)); rig.updateMatrixWorld(true);
+  rig.rotation.y = Math.PI + P.twist; rig.position.copy(v(P.body)); rig.updateMatrixWorld(true);
   for (const name of ['Head', 'Neck']) if (bones[name]) bones[name].scale.setScalar(0.001); // nothing in front of the lens
   rig.updateMatrixWorld(true);
-  const grip = GUN_POS.clone().add(GRIP.clone().multiplyScalar(0.85));
+  const M = P.mount, origin = v(M.pos), place = new THREE.Matrix4().compose(origin, new THREE.Quaternion().setFromEuler(new THREE.Euler(...M.rot)), new THREE.Vector3().setScalar(M.scale));
   for (const side of ['Right', 'Left']) {
     const p = P[side[0]], arm = bones[side + 'Arm'], fore = bones[side + 'ForeArm'], hand = bones[side + 'Hand'];
     // rest-pose facts, taken before anything moves: T-pose palms face the floor
@@ -54,7 +73,7 @@ export function buildArms(proto, opts = {}) {
       const q = wq(b), dir = (k < 3 ? axisOf(b) : b.position.clone().normalize()).applyQuaternion(k < 3 ? q : wq(b.parent)), toward = f === 'Thumb' ? restF.clone() : down;
       fingers.push({ b, f, k, axis: new THREE.Vector3().crossVectors(dir, toward).normalize().applyQuaternion(q.clone().invert()) });
     }
-    const S = wp(arm), l1 = wp(fore).distanceTo(S), l2 = wp(hand).distanceTo(wp(fore)), W = grip.clone().add(v(p.wrist));
+    const S = wp(arm), l1 = wp(fore).distanceTo(S), l2 = wp(hand).distanceTo(wp(fore)), W = v(p.at).applyMatrix4(place).add(v(p.wrist));
     const to = W.clone().sub(S), d = Math.min(to.length(), (l1 + l2) * 0.999), dir = to.clone().normalize();
     const a = (l1 * l1 - l2 * l2 + d * d) / (2 * d), h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
     const pole = v(p.pole), perp = pole.sub(dir.clone().multiplyScalar(pole.dot(dir))).normalize(), E = S.clone().addScaledVector(dir, a).addScaledVector(perp, h);
@@ -70,14 +89,10 @@ export function buildArms(proto, opts = {}) {
   bones.RightHand.scale.setScalar(0.82);
   bones.LeftHand.scale.setScalar(0.82);
   rig.updateMatrixWorld(true);
-  // Seat the trigger finger and thumb against the Makarov, rather than curling
-  // every digit into the same fist. Targets are relative to the weapon mount.
-  const placeDigit = (name, targets) => targets.forEach((target, i) => {
-    const bone = bones['RightHand' + name + (i + 1)];
-    aim(bone, GUN_POS.clone().add(v(target)).sub(wp(bone)));
+  for (const side of ['Right', 'Left']) for (const [name, targets] of Object.entries(P[side[0]].digits)) targets.forEach((target, i) => {
+    const bone = bones[side + 'Hand' + name + (i + 1)];
+    aim(bone, origin.clone().add(v(target)).sub(wp(bone)));
   });
-  placeDigit('Index', [[0.018, 0, -0.075], [0.003, -0.006, -0.085], [-0.004, -0.014, -0.075]]);
-  placeDigit('Thumb', [[-0.020, -0.008, -0.026], [-0.021, -0.010, -0.053], [-0.015, -0.018, -0.070]]);
   rig.updateMatrixWorld(true);
   return rig;
 }
