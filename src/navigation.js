@@ -2,21 +2,22 @@
 // Grid occupancy is lazy and cached; invalidate when future building changes solids.
 import { collide, nearCircles, clearCircleGrid, BOUND_X, BOUND_Z } from './world.js';
 const STEP = 0.75, RADIUS = 0.40;
-const cells = new Map();
+const cells = new Map(), probe = { x: 0, z: 0 };
 export function clearNavigation() { cells.clear(); clearCircleGrid(); }
 function clearPoint(x, z) {
   if (Math.abs(x) > BOUND_X || Math.abs(z) > BOUND_Z) return false;
   // collide intentionally ignores exact circle centres; navigation must not.
-  for (const c of nearCircles(x, z)) if (Math.hypot(x - c.x, z - c.z) < c.r + RADIUS) return false;
-  const p = { x, z }; collide(p, RADIUS);
-  return Math.hypot(p.x - x, p.z - z) < 0.001;
+  const near = nearCircles(x, z); // indexed, with sqrt: for-of and Math.hypot allocate here
+  for (let i = 0; i < near.length; i++) { const c = near[i], dx = x - c.x, dz = z - c.z; if (dx * dx + dz * dz < (c.r + RADIUS) ** 2) return false; }
+  probe.x = x; probe.z = z; collide(probe, RADIUS); // one reused point: this runs thousands of times a frame
+  const dx = probe.x - x, dz = probe.z - z; return dx * dx + dz * dz < 1e-6;
 }
 export function clearSegment(a, b) {
-  const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 0.2));
-  for (let i = 0; i <= n; i++) if (!clearPoint(a.x + (b.x - a.x) * i / n, a.z + (b.z - a.z) * i / n)) return false;
+  const dx = b.x - a.x, dz = b.z - a.z, n = Math.max(1, Math.ceil(Math.sqrt(dx * dx + dz * dz) / 0.2));
+  for (let i = 0; i <= n; i++) if (!clearPoint(a.x + dx * i / n, a.z + dz * i / n)) return false;
   return true;
 }
-const key = (x, z) => x + ',' + z;
+const key = (x, z) => (x + 2048) * 4096 + z + 2048; // a number, not a string: no garbage per lookup
 function cell(x, z) {
   const k = key(x, z);
   if (!cells.has(k)) cells.set(k, clearPoint(x * STEP, z * STEP));
@@ -83,7 +84,7 @@ export function updateNavigation() {
   // Also capped by time: the first searches after a gunshot fill the occupancy cache and cost more per step.
   const t0=performance.now();
   for (let i=0;i<160 && queue.length;i++) {
-    if ((i & 7) === 7 && performance.now()-t0 > 3) break;
+    if (i && performance.now()-t0 > 3) break; // checked every step: eight cold steps could take 10 ms
     const job=queue.shift();
     if (job.owner.navPending !== job) continue;
     const next=job.search.next();

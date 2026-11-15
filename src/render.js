@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { $, COARSE } from './util.js';
+import { LIGHTING } from './data.js';
 
 const canvas = $('view');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
@@ -20,17 +21,19 @@ const camera = new THREE.PerspectiveCamera(68, 1, 0.08, 1400);
 camera.rotation.order = 'YXZ';
 scene.add(camera);
 
-const SUN_DIR = new THREE.Vector3(0.10, 0.17, -1).normalize();
+// SUN_DIR is where the sun sits in the sky; LIGHT_DIR is where the directional light comes from (the sun by day,
+// the moon by night). lighting.js moves both, and the fog colour, through the day; FOG stays the daytime colour.
+const SUN_DIR = new THREE.Vector3(...LIGHTING.sunDir).normalize(), LIGHT_DIR = SUN_DIR.clone(), MOON_DIR = new THREE.Vector3(...LIGHTING.moonDir).normalize();
 const FOG = new THREE.Color().setRGB(0.50, 0.33, 0.25);
 scene.fog = new THREE.FogExp2(FOG, 0.0095);
 
 // ---------------------------------------------------------------- sky
 const skyMat = new THREE.ShaderMaterial({
   side: THREE.BackSide, depthWrite: false, fog: false,
-  uniforms: { sunDir: { value: SUN_DIR }, fogCol: { value: FOG } },
+  uniforms: { sunDir: { value: SUN_DIR }, fogCol: { value: scene.fog.color }, moonDir: { value: MOON_DIR }, night: { value: 0 }, glow: { value: 1 }, tint: { value: new THREE.Color(1, 1, 1) } },
   vertexShader: `varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
   fragmentShader: `
-    varying vec3 vDir; uniform vec3 sunDir; uniform vec3 fogCol;
+    varying vec3 vDir; uniform vec3 sunDir, fogCol, moonDir, tint; uniform float night, glow;
     float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
     float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
       return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x), f.y); }
@@ -48,10 +51,18 @@ const skyMat = new THREE.ShaderMaterial({
       vec2 cp = d.xz / (h + 0.12) * 0.9;
       float cl = smoothstep(0.48, 0.85, fbm(cp + vec2(3.0, 1.0))) * smoothstep(0.02, 0.2, h);
       vec3 cloudCol = mix(vec3(0.16,0.15,0.2), vec3(1.5,0.7,0.35), pow(toward, 3.0) * (1.0 - h));
-      c = mix(c, cloudCol, cl * 0.75);
-      c = mix(fogCol * (1.0 + 1.3 * pow(toward, 3.0)), c, 0.12 + 0.88 * smoothstep(0.0, 0.26, h));
-      c += vec3(1.0,0.5,0.2) * pow(sa, 6.0) * 0.55;
-      c += vec3(1.0,0.8,0.55) * pow(sa, 900.0) * 14.0;
+      c = mix(c, cloudCol, cl * 0.75) * tint;
+      // night: deep blue, a moon, a few stars between dark clouds
+      float ma = max(dot(d, moonDir), 0.0);
+      vec3 nc = mix(vec3(0.05,0.07,0.13), vec3(0.008,0.014,0.04), smoothstep(0.0, 0.6, h));
+      vec2 sp = floor(d.xz / (h + 0.35) * 160.0);
+      nc += vec3(0.75,0.8,1.0) * step(0.9965, hash(sp)) * smoothstep(0.08, 0.4, h) * (1.0 - cl) * 0.8;
+      nc = mix(nc, vec3(0.035,0.045,0.08), cl * 0.7);
+      nc += vec3(0.30,0.40,0.65) * pow(ma, 10.0) * 0.22 + vec3(0.85,0.9,1.0) * smoothstep(0.99935, 0.99965, ma) * 2.2;
+      c = mix(c, nc, night);
+      c = mix(fogCol * (1.0 + 1.3 * glow * pow(toward, 3.0)), c, 0.12 + 0.88 * smoothstep(0.0, 0.26, h));
+      c += vec3(1.0,0.5,0.2) * pow(sa, 6.0) * 0.55 * glow;
+      c += vec3(1.0,0.8,0.55) * pow(sa, 900.0) * 14.0 * glow * smoothstep(-0.02, 0.01, sunDir.y);
       c = mix(fogCol, c, smoothstep(-0.02, 0.03, d.y));
       gl_FragColor = vec4(c, 1.0);
     }`
@@ -59,12 +70,6 @@ const skyMat = new THREE.ShaderMaterial({
 const sky = new THREE.Mesh(new THREE.SphereGeometry(1000, 32, 16), skyMat);
 sky.frustumCulled = false;
 scene.add(sky);
-{ // image-based light from the sky so glass and car paint pick up the sunset
-  const s = new THREE.Scene(); s.add(sky.clone());
-  const pm = new THREE.PMREMGenerator(renderer);
-  scene.environment = pm.fromScene(s, 0, 0.1, 1200).texture;
-  pm.dispose();
-}
 
 const sun = new THREE.DirectionalLight(new THREE.Color().setRGB(1.0, 0.62, 0.36), 3.6);
 sun.castShadow = true;
@@ -73,7 +78,8 @@ const SH = 70;
 Object.assign(sun.shadow.camera, { left: -SH, right: SH, top: SH, bottom: -SH, near: 1, far: 420 });
 sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.06;
 scene.add(sun, sun.target);
-scene.add(new THREE.HemisphereLight(new THREE.Color().setRGB(0.36, 0.42, 0.62), new THREE.Color().setRGB(0.30, 0.20, 0.14), 1.25));
+const hemi = new THREE.HemisphereLight(new THREE.Color().setRGB(0.36, 0.42, 0.62), new THREE.Color().setRGB(0.30, 0.20, 0.14), 1.25);
+scene.add(hemi);
 
 const rt = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 });
 const composer = new EffectComposer(renderer, rt);
@@ -100,4 +106,4 @@ function resize() {
 }
 addEventListener('resize', resize); resize();
 
-export { canvas, renderer, scene, camera, SUN_DIR, FOG, sky, sun, composer, grade };
+export { canvas, renderer, scene, camera, SUN_DIR, LIGHT_DIR, MOON_DIR, FOG, sky, skyMat, sun, hemi, bloom, composer, grade };

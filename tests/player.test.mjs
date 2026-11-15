@@ -4,26 +4,28 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import * as THREE from 'three';
-import { MOVEMENT, LOOT, MEDKIT, PLAYER_CONTROL, WEAPONS, START_WEAPON, WEAPON_SWITCH, AMMO_BOX_WEAPON } from '../src/data.js';
-import { ITEMS, pickupRoom, newEquipment, itemCount, collectItem, updateSurvival, newSupplies } from '../src/inventory.js';
+import { MOVEMENT, LOOT, MEDKIT, PLAYER_CONTROL, WEAPONS, START_WEAPON, WEAPON_SWITCH, AMMO_BOX_WEAPON, NOISE, DEATH } from '../src/data.js';
+import { newDaytime, nightFactor, isNightHour, formatHour } from '../src/daynight.js';
+import { ITEMS, pickupRoom, newEquipment, itemCount, collectItem, updateSurvival, newSupplies, applyDeath, describeLoss } from '../src/inventory.js';
 import { createPlayer, newArsenal } from '../src/state.js';
 function setup(pickSpots = []) {
  const elements=new Map(),events={};
  const pageIds=new Set([...fs.readFileSync(new URL('../index.html',import.meta.url),'utf8').matchAll(/id="([^"]+)"/g)].map(m=>m[1]));
- function el(id) { if(!pageIds.has(id))return null; if(!elements.has(id))elements.set(id,{hidden:true,style:{},firstElementChild:{style:{}},handlers:{},attrs:{},addEventListener(n,f){(this.handlers[n]??=[]).push(f);},setAttribute(k,v){this.attrs[k]=v;},emit(n,e={}){for(const f of this.handlers[n]||[])f(e);}});return elements.get(id); }
+ function el(id) { if(!pageIds.has(id))return null; if(!elements.has(id))elements.set(id,{hidden:true,style:{},firstElementChild:{style:{}},handlers:{},attrs:{},addEventListener(n,f){(this.handlers[n]??=[]).push(f);},setAttribute(k,v){this.attrs[k]=v;},getAttribute(k){return k in this.attrs?this.attrs[k]:null;},emit(n,e={}){for(const f of this.handlers[n]||[])f(e);}});return elements.get(id); }
  const player=Object.assign(createPlayer(),{pitch:0});
  const game={ready:true,started:false,dead:false,touchMode:true,firing:false};
  const camera=new THREE.PerspectiveCamera(),scene=new THREE.Scene();
- const sounds=[];
+ const sounds=[],noises=[],heard=[],daytime=newDaytime();
  const context={createController,inventoryController:()=>{},navigator:{getGamepads:()=>[]},ITEMS,pickupRoom,newEquipment,itemCount,collectItem,updateSurvival,newSupplies,installInventoryUI:()=>open=>{game.inventoryOpen=open;},updateInventoryUI:()=>{},buildLoot:()=>{const m=new THREE.Group();m.material={};return m;},MEDKIT,PLAYER_CONTROL,LOOT,MOVEMENT,WEAPONS,START_WEAPON,WEAPON_SWITCH,AMMO_BOX_WEAPON,newArsenal,THREE,player,game,camera,scene,canvas:el('view'),$:el,rnd:()=>0.5,clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),
  AMMO_BOX:12,pickSpots,zombies:[],clock:{elapsedTime:0},
- groundY:()=>0,roomAt:()=>null,collide:()=>{},rayWorld:()=>140,hitZombieVisual:()=>{},placeZombie:()=>{},audioStart:()=>{},
+ groundY:()=>0,roomAt:()=>null,collide:()=>{},rayWorld:()=>140,hitZombieVisual:()=>{},audioStart:()=>{},
+ NOISE,DEATH,daytime,nightFactor,isNightHour,formatHour,applyDeath,describeLoss,makeNoise:(x,z,r)=>{noises.push({x,z,r});return 0;},hearNoise:(z,x,zz)=>{heard.push(z);},chooseRespawnPoint:()=>({x:-41,z:10,yaw:Math.PI}),
  sfx:{medkit(){},dry(){},shot(){sounds.push('shot');},rifle(){sounds.push('rifle');},swap(){},reload(){},thud(){},jump(){},land(){},pickup(){},voice(){},stopVoice(){}},mkCanvas:()=>({getContext:()=>({createRadialGradient:()=>({addColorStop(){}}),fillRect(){}})}),
  document:{getElementById:el,addEventListener(n,f){events[n]=f;},hidden:false},
  addEventListener(n,f){(events[n]??=[]).push(f);},innerWidth:800,setTimeout:()=>0,Math};
  const source=fs.readFileSync(new URL('../src/player.js',import.meta.url),'utf8').replace(/^import .*;.*$/gm,'').replace(/^export .*;$/gm,'');
  vm.runInNewContext(source+'\nglobalThis.api={begin,updatePlayer,torch,resetInput,fire,reload,fp,held,pickups,interact,heal,jump,toggleCrouch,selectWeapon,pollController};',context);
- return {context,el,events,player,game,camera,sounds,api:context.api};
+ return {context,el,events,player,game,camera,sounds,noises,heard,daytime,api:context.api};
 }
 test('flashlight attached, mobile toggle controls intensity and preserves manual choice',()=>{
  const {api,camera,el}=setup();api.begin();
@@ -108,13 +110,13 @@ test('loot requires line of sight and reach; turning away or death invalidates i
  context.rayWorld=()=>140;player.yaw=Math.PI;api.updatePlayer(.01);api.interact();assert.equal(player.spare,24);
  player.yaw=0;api.updatePlayer(.01);player.hp=-1;api.updatePlayer(.01);api.interact();assert.equal(player.spare,24);assert.equal(el('loot').hidden,true);
 });
-test('E collects only the viewed item, and restarting restores collected ammo boxes',()=>{
+test('E collects only the viewed item, and what was looted stays taken after a death',()=>{
  const {api,player,events,game}=setup([new THREE.Vector3(41,1,42.5),new THREE.Vector3(41.25,1,42.5)]);api.begin();
  player.pitch=-Math.atan2(.68,1.5);api.updatePlayer(.01);
  events.keydown.forEach(f=>f({code:'KeyE',repeat:false}));assert.equal(player.spare,36);
  assert.equal(api.pickups[0].taken,true);assert.equal(api.pickups[1].taken,false);
  events.keydown.forEach(f=>f({code:'KeyE',repeat:true}));assert.equal(player.spare,36);
- game.dead=true;api.begin();assert.equal(api.pickups[0].taken,false);assert.equal(api.pickups[0].m.visible,true);
+ game.dead=true;api.begin();assert.equal(api.pickups[0].taken,true);assert.equal(api.pickups[0].m.visible,false);
 });
 
 test('jump follows one grounded arc, rejects double jumps, and lands once',()=>{
@@ -195,16 +197,16 @@ test('the HEAL button shows and hides with the other touch buttons',()=>{
  assert.equal(player.medkits,MEDKIT.start-1);assert.ok(player.healing>0);
  player.hp=-1;api.updatePlayer(.01);assert.equal(el('heal').hidden,true);assert.equal(el('fire').hidden,true);
 });
-test('dying and going again resets health, medkits, an in-progress heal, and every pickup',()=>{
+test('dying and getting up restores health, the starting medkits and cancels a heal; the world is not reset',()=>{
  const {api,player,events,game}=setup([medkit(41,1,42.5),new THREE.Vector3(41.25,1,42.5)]);api.begin();
  player.pitch=-Math.atan2(.68,1.5);api.updatePlayer(.01);press(events,'KeyE');
  assert.equal(api.pickups[0].taken,true);assert.equal(player.medkits,MEDKIT.start+1);
  player.hp=20;press(events,'KeyH');assert.ok(player.healing>0);
  player.hp=-1;api.updatePlayer(.01);assert.equal(game.dead,true);assert.equal(player.healing,0);
  api.begin();
- assert.equal(player.hp,100);assert.equal(player.medkits,MEDKIT.start);assert.equal(player.healing,0);
- assert.ok(api.pickups.every(p=>!p.taken&&p.m.visible));
- for(let i=0;i<30;i++)api.updatePlayer(.05);assert.equal(player.hp,100);
+ assert.equal(player.hp,DEATH.hp);assert.equal(player.medkits,MEDKIT.start);assert.equal(player.healing,0);
+ assert.equal(api.pickups[0].taken,true);assert.equal(api.pickups[1].taken,false);
+ for(let i=0;i<30;i++)api.updatePlayer(.05);assert.equal(player.hp,DEATH.hp);
 });
 
 // Weapons: the Makarov and the AK-47 each keep their own rounds; switching, fire modes, damage and restart.
@@ -282,10 +284,10 @@ test('rifle body hits put a zombie down in fewer shots than the pistol; headshot
 });
 test('the HUD names the weapon in hand and shows its rounds',()=>{
  const {api,el,player}=setup();api.begin();api.updatePlayer(.01);
- assert.equal(el('gunname').textContent,'Makarov');assert.equal(el('rounds').textContent,12);assert.equal(el('ammonote').textContent,'24 spare');
+ assert.equal(el('gunname').textContent,'Makarov');assert.equal(el('rounds').textContent,'12');assert.equal(el('ammonote').textContent,'24 spare');
  api.selectWeapon('ak47');api.updatePlayer(.05);assert.equal(el('rounds').textContent,'--');
  for(let i=0;i<12;i++)api.updatePlayer(.05);
- assert.equal(el('gunname').textContent,'AK-47');assert.equal(el('rounds').textContent,30);assert.equal(el('ammonote').textContent,'90 spare');
+ assert.equal(el('gunname').textContent,'AK-47');assert.equal(el('rounds').textContent,'30');assert.equal(el('ammonote').textContent,'90 spare');
  assert.equal(el('swap').textContent,'PISTOL');assert.match(el('swap').attrs['aria-label'],/Makarov/);
  player.ammo=10;api.reload();api.updatePlayer(.05);assert.equal(el('ammonote').textContent,'reloading');
 });
@@ -316,9 +318,9 @@ test('backpack pause blocks movement, shots, pickup and survival drain; resume r
  api.fire();api.jump();api.updatePlayer(10);assert.equal(player.z,before.z);assert.equal(player.hunger,before.hunger);assert.equal(player.ammo,before.ammo);
  game.inventoryOpen=false;api.updatePlayer(1);assert.ok(player.hunger<before.hunger);
 });
-test('death restart replenishes needs and resets collected consumables',()=>{
+test('getting up after a death restores needs to the DEATH values and leaves no food or water',()=>{
  const {api,player}=setup();api.begin();player.hunger=3;player.thirst=5;player.supplies.food=0;player.hp=0;
- api.updatePlayer(.01);api.begin();assert.equal(player.hunger,100);assert.equal(player.thirst,100);assert.deepEqual(player.supplies,{food:1,water:1});
+ api.updatePlayer(.01);api.begin();assert.equal(player.hunger,DEATH.hunger);assert.equal(player.thirst,DEATH.thirst);assert.deepEqual(player.supplies,{food:0,water:0});
 });
 
 test('controller drives analog movement, non-inverted look, ADS and single-shot pistol',()=>{
@@ -362,3 +364,61 @@ test('controller starts and restarts, jumps once, switches gun, holds rifle fire
  assert.match(el('controller-status').textContent,/connect/);
  assert.doesNotThrow(()=>api.updatePlayer(.016));
  });
+
+test('the HUD is not rewritten when nothing on it changed',()=>{
+ const {api,el,player}=setup();api.begin();api.updatePlayer(.05);api.updatePlayer(.05);
+ let writes=0;
+ const watch=id=>{const e=el(id);let v=e.textContent;Object.defineProperty(e,'textContent',{get:()=>v,set:x=>{writes++;v=x;}});const set=e.setAttribute;e.setAttribute=function(k,x){writes++;return set.call(this,k,x);};};
+ for(const id of ['rounds','ammonote','gunname','swap','medcount','heal','aim','sprint','crouch','flashlight'])watch(id);
+ api.updatePlayer(.05);api.updatePlayer(.05);assert.equal(writes,0);
+ api.fire();api.updatePlayer(.05);assert.equal(player.ammo,11);assert.equal(el('rounds').textContent,'11');assert.equal(writes,1);
+});
+
+// Noise: shots and footsteps call makeNoise with a radius; zombies decide for themselves who hears it.
+test('a shot makes a noise as loud as the weapon, and sustained fire carries further',()=>{
+ const {api,player,noises}=setup();api.begin();
+ api.fire();assert.equal(noises.length,1);assert.equal(noises[0].r,WEAPONS.makarov.noise);assert.deepEqual([noises[0].x,noises[0].z],[player.x,player.z]);
+ const r=setup();r.api.begin();switchTo(r.api,'ak47');r.api.fire();assert.equal(r.noises.at(-1).r,WEAPONS.ak47.noise);
+ for(let i=0;i<20;i++){r.player.cool=0;r.api.fire();}
+ assert.ok(r.noises.at(-1).r>WEAPONS.ak47.noise*1.3);assert.ok(r.noises.at(-1).r<=WEAPONS.ak47.noise*(1+NOISE.maxBoost)+1e-9);
+});
+test('a hit zombie turns toward the shooter through hearNoise; no zombie is told where the player is',()=>{
+ const {api,player,context,heard}=setup();api.begin();
+ const z=zombie(41,40),far=zombie(41,-60);context.zombies.push(z,far);player.pitch=-Math.atan2(.6,4);api.updatePlayer(1e-4);api.fire();
+ assert.deepEqual(heard,[z]);assert.equal(z.alert,0);assert.equal(far.alert,0);
+});
+test('sprinting gives off a small noise, walking and crouch-walking none',()=>{
+ for(const [mode,expect] of [['walk',0],['sprint',NOISE.sprint],['crouch',0]]){
+  const {api,events,noises}=setup();api.begin();
+  const key=c=>events.keydown.forEach(f=>f({code:c}));
+  if(mode==='crouch')key('KeyC');key('KeyW');if(mode==='sprint')key('ShiftLeft');
+  for(let i=0;i<20;i++)api.updatePlayer(.05);
+  if(expect){assert.ok(noises.length>=1&&noises.length<=Math.ceil(1/NOISE.sprintInterval)+1,mode);assert.ok(noises.every(n=>n.r===expect));}
+  else assert.equal(noises.length,0,mode);
+ }
+});
+test('death says what happened and what was lost; getting up keeps the clock, the day and the looted world',()=>{
+ const {api,player,game,el,daytime}=setup([new THREE.Vector3(41,1,42.5)]);api.begin();
+ player.pitch=-Math.atan2(.68,1.5);api.updatePlayer(.01);api.interact();assert.equal(api.pickups[0].taken,true);
+ daytime.day=3;daytime.hour=22.25;player.supplies={food:2,water:0};player.equipment.backpack='hikingPack';player.kills=7;
+ player.hp=0;api.updatePlayer(.01);assert.equal(game.dead,true);
+ assert.match(el('blurb').textContent,/Day 3, 22:15/);assert.match(el('blurb').textContent,/Lost: 2 canned beans, 12 pistol rounds\./);
+ assert.equal(el('go').textContent,'Get up');assert.equal(el('veil').hidden,false);
+ api.begin();
+ assert.equal(game.dead,false);assert.deepEqual({day:daytime.day,hour:daytime.hour},{day:3,hour:22.25});
+ assert.deepEqual([player.x,player.z,player.yaw],[-41,10,Math.PI],'placed by chooseRespawnPoint');
+ assert.equal(player.hp,DEATH.hp);assert.equal(player.hunger,DEATH.hunger);assert.equal(player.kills,7);
+ assert.equal(player.equipment.backpack,'hikingPack');assert.deepEqual(player.guns,newArsenal());assert.equal(api.pickups[0].taken,true);
+});
+test('the HUD shows the day and the time, and says when night falls and when dawn breaks',()=>{
+ const {api,el,daytime}=setup();api.begin();api.updatePlayer(.05);
+ assert.equal(el('clock').hidden,false);assert.equal(el('clock-day').textContent,'DAY 1');assert.equal(el('clock-time').textContent,'07:30');
+ assert.equal(el('phase').hidden,true);
+ daytime.hour=20.05;api.updatePlayer(.05);assert.equal(el('clock').attrs['data-phase'],'night');assert.equal(el('phase').hidden,false);assert.match(el('phase').textContent,/Night 1/);
+ for(let i=0;i<120;i++)api.updatePlayer(.05);assert.equal(el('phase').hidden,true);
+ daytime.day=2;daytime.hour=6.01;api.updatePlayer(.05);assert.equal(el('clock-day').textContent,'DAY 2');assert.match(el('phase').textContent,/Dawn of day 2/);
+ let writes=0;for(const id of ['clock-day','clock-time','phase']){const e=el(id);let v=e.textContent;Object.defineProperty(e,'textContent',{get:()=>v,set:x=>{writes++;v=x;}});}
+ const set=el('clock').setAttribute;el('clock').setAttribute=function(k,x){writes++;return set.call(this,k,x);};
+ api.updatePlayer(.05);api.updatePlayer(.05);assert.equal(writes,0);
+ daytime.hour=6.2;api.updatePlayer(.05);assert.equal(writes,1);assert.equal(el('clock-time').textContent,'06:10');
+});

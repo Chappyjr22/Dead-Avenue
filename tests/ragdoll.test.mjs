@@ -5,6 +5,8 @@ import vm from 'node:vm';
 import * as THREE from 'three';
 import {loadGeometry} from '../tools/inspect-models.mjs';
 import * as visual from '../src/zombie-visual.js';
+import { HORDE } from '../src/data.js';
+import { newDaytime } from '../src/daynight.js';
 const model=visual.prepareZombieModel(await loadGeometry('assets/city-zombie.glb'));
 // zombies.js runs against stub world modules: flat road at y 0, pavement at 0.18 for x>10, a wall at x=-1.
 function setup(obstacle) {
@@ -12,7 +14,8 @@ function setup(obstacle) {
  const context={THREE,player,zombies,game:{started:true},clock:{elapsedTime:0},sfx:{groan(){},hurt(){}},scene:{add(){}},COARSE:false,
   rnd:Math.random,rr:(a,b)=>a+(b-a)*.5,pick:a=>a[0],clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),lurkSpots:[],AVES:[0,0,0,0,0,0],STS:[0,0,0,0,0,0],
   groundY:ground,insideBuilding:()=>false,collide:obstacle||((p,r)=>{walls.push(p);if(p.x<-1+r)p.x=-1+r;}),rayWorld:()=>140,
-  clearSegment:()=>true,requestRoute(){},Math,...visual};
+  clearSegment:()=>true,requestRoute(){},Math,...visual,
+  HORDE,threat:{...HORDE.day,sight:34},daytime:newDaytime(),hordeAt:()=>{},hordeCap:()=>18,activeTarget:()=>18};
  const source=fs.readFileSync(new URL('../src/zombies.js',import.meta.url),'utf8').replace(/^import [\s\S]*?;$/gm,'').replace(/^export .*;$/gm,'').replace(/^export function/gm,'function');
  vm.runInNewContext(source+'\nglobalThis.api={makeZombie,placeZombie,updateZombie,setModel:m=>{zombieModel=m;}};',context);
  const api=context.api; api.setModel(model);
@@ -91,8 +94,10 @@ test('respawn returns the skeleton to normal animation and a zombie can die twic
  for(let round=0;round<2;round++){
   z.root.position.set(0,0,0);z.alert=0;kill(z,1.2);
   run(api,z,11);assert.ok(z.root.position.y<-.4,'the body sinks before it is recycled');
-  while(z.dead)api.updateZombie(z,1/60);// the dead timer recycles it
-  assert.equal(z.dead,0);assert.equal(z.hp,3);assert.equal(z.visual.ragdoll,null);assert.equal(z.root.visible,true);
+  while(z.dead)api.updateZombie(z,1/60);// the dead timer retires it from the streets
+  assert.equal(z.active,false);assert.equal(z.root.visible,false);
+  api.placeZombie(z,0);// and the horde brings it back
+  assert.equal(z.dead,0);assert.equal(z.active,true);assert.equal(z.hp,3);assert.equal(z.visual.ragdoll,null);assert.equal(z.root.visible,true);
   assert.equal(z.visual.mixer.timeScale,1);assert.equal(z.visual.current,'idle');assert.equal(z.visual.deathImpulse,null);
   assert.ok(Math.abs(z.root.position.y)<1e-9,'root back on the ground');assert.equal(z.root.scale.x,z.root.scale.y);
   // Same animated pose as a zombie that never died.

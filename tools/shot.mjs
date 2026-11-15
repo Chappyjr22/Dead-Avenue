@@ -18,7 +18,9 @@ await pg.route('https://fonts.googleapis.com/**', r => r.abort());
 pg.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') console.log('[' + m.type() + ']', m.text().slice(0, 400)); });
 pg.on('pageerror', e => console.log('[pageerror]', e.message, (e.stack || '').split('\n').slice(0, 4).join(' | ')));
 fs.mkdirSync('shots', { recursive: true });
-await pg.addInitScript(() => { window.__manual = true; });
+// Headless Chromium cannot lock the pointer, and once begin() had asked it to, every rendered frame read back by
+// toDataURL grew the browser and renderer processes by hundreds of megabytes until the machine killed them.
+await pg.addInitScript(() => { window.__manual = true; HTMLCanvasElement.prototype.requestPointerLock = function () { return Promise.resolve(); }; });
 await pg.goto(`http://localhost:${+(process.env.PORT || 8765)}/`);
 await pg.waitForFunction(() => window.__game && !document.getElementById('go').disabled, null, { timeout: 120000 }).catch(e => console.log('wait fail', e.message));
 for (const s of shots) {

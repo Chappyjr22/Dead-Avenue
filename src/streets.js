@@ -148,8 +148,9 @@ lampB.build(lampGeometry(), ironMat); sigB.build(signalGeometry(), ironMat);
   bb.build(g, stoneMat);
 }
 
+const farMat = new THREE.MeshBasicMaterial({ fog: false }); // lighting.js tints the skyline to the fog through the day
 B.wall.build(unitBox, wallMat); B.stone.build(unitBox, stoneMat); B.walk.build(unitBox, walkMat, false, true);
-B.int.build(unitBox, intMat, true, true); B.tile.build(unitBox, tileFloorMat, false, true); B.far.build(unitBox, new THREE.MeshBasicMaterial({ fog: false }), false, false); B.plain.build(unitBox, plainMat); B.iron.build(unitBox, ironMat);
+B.int.build(unitBox, intMat, true, true); B.tile.build(unitBox, tileFloorMat, false, true); B.far.build(unitBox, farMat, false, false); B.plain.build(unitBox, plainMat); B.iron.build(unitBox, ironMat);
 B.win.build(unitQuad, winMat, false, true); B.sign.build(unitQuad, signMat, false, true);
 
 // a few streetlights still have power
@@ -167,4 +168,4 @@ const litLamps = [];
 const ash = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ map: (() => { const c = mkCanvas(32, 32), x = c.getContext('2d'), g = x.createRadialGradient(16, 16, 0, 16, 16, 16); g.addColorStop(0, '#fff'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 32, 32); return new THREE.CanvasTexture(c); })(), color: new THREE.Color().setRGB(1.6, 1.1, 0.7), size: 0.05, transparent: true, opacity: 0.55, depthWrite: false }));
 { const n = 500, a = new Float32Array(n * 3); for (let i = 0; i < n * 3; i++) a[i] = (Math.random() - 0.5) * 30; ash.geometry.setAttribute('position', new THREE.BufferAttribute(a, 3)); ash.frustumCulled = false; scene.add(ash); }
 
-export { litLamps, ash, lampHeads };
+export { litLamps, ash, lampHeads, farMat };
