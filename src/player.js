@@ -51,6 +51,11 @@ const pickups = pickSpots.map(p => {
   return {m,taken:false,kind,name:def.name.toUpperCase(),amount:def.amount,glow:.5};
 });
 const medFull = item => pickupRoom(player,item.kind)===0;
+// HUD writes run every frame, so they only touch the page when a value changes: rewriting the same text or
+// attribute still queues a mutation and a style and layout pass, and a phone feels that.
+const put = (e, k, v) => { if (e[k] !== v) e[k] = v; };
+const putText = (id, v) => put($(id), 'textContent', String(v));
+const putAttr = (id, k, v) => { const e = $(id); if (e.getAttribute(k) !== v) e.setAttribute(k, v); };
 // Choose one visible item near the centre of the player's view. Revalidate on
 // interaction so turning away, moving out of reach, or a wall cannot grant loot.
 const lootDirection = new THREE.Vector3(), lootOffset = new THREE.Vector3();
@@ -79,17 +84,17 @@ function updateLoot(dt = 0) {
   for (const item of pickups) if (!item.taken) {
     item.m.material.emissiveIntensity = (target?.item === item ? 1.5 : 0.45 + Math.sin(clock.elapsedTime * 4) * 0.3) * item.glow;
   }
-  $('loot').hidden = !target;
+  put($('loot'), 'hidden', !target);
   if (target) {
     const { item } = target, med = item.kind === 'medkit', full = medFull(item), reachable = target.distance <= LOOT.reach && !full;
-    $('loot-name').textContent = item.name;
-    $('loot-amount').textContent = full ? 'No room or already wearing equal/better gear' : (item.kind==='ammo'||item.kind==='rifleAmmo') ? item.amount+' rounds' : ITEMS[item.kind].detail;
-    $('interact').disabled = !reachable;
-    $('interact').textContent = full ? 'CARRYING MAX' : target.distance > LOOT.reach ? 'MOVE CLOSER' : game.controllerMode ? '[RB / R1] PICK UP' : game.touchMode ? 'PICK UP' : '[E] PICK UP';
-    $('interact').setAttribute('aria-label', full ? 'Cannot carry more '+ITEMS[item.kind].name : 'Pick up '+(med?'a medkit':item.kind==='ammo'?item.amount+' rounds of pistol ammo':ITEMS[item.kind].name));
+    putText('loot-name', item.name);
+    putText('loot-amount', full ? 'No room or already wearing equal/better gear' : (item.kind==='ammo'||item.kind==='rifleAmmo') ? item.amount+' rounds' : ITEMS[item.kind].detail);
+    put($('interact'), 'disabled', !reachable);
+    putText('interact', full ? 'CARRYING MAX' : target.distance > LOOT.reach ? 'MOVE CLOSER' : game.controllerMode ? '[RB / R1] PICK UP' : game.touchMode ? 'PICK UP' : '[E] PICK UP');
+    putAttr('interact', 'aria-label', full ? 'Cannot carry more '+ITEMS[item.kind].name : 'Pick up '+(med?'a medkit':item.kind==='ammo'?item.amount+' rounds of pistol ammo':ITEMS[item.kind].name));
   }
   lootToastTime = Math.max(0, lootToastTime - dt);
-  $('loot-toast').hidden = lootToastTime <= 0 || !game.started || game.dead;
+  put($('loot-toast'), 'hidden', lootToastTime <= 0 || !game.started || game.dead);
 }
 function interact() {
   const target = findLoot();
@@ -112,8 +117,8 @@ function heal() {
   player.medkits--; player.healing = MEDKIT.time; sfx.medkit(); updateMeds();
 }
 function updateMeds() {
-  $('medcount').textContent = player.healing > 0 ? 'Healing' : `Medkits ${player.medkits}/${MEDKIT.max}`;
-  $('heal').setAttribute('aria-disabled', String(player.medkits <= 0 || player.hp >= 100 || player.healing > 0));
+  putText('medcount', player.healing > 0 ? 'Healing' : `Medkits ${player.medkits}/${MEDKIT.max}`);
+  putAttr('heal', 'aria-disabled', String(player.medkits <= 0 || player.hp >= 100 || player.healing > 0));
 }
 const keys = {};
 const move = { x: 0, y: 0 };
@@ -186,11 +191,11 @@ function selectWeapon(id) {
 const nextWeapon = () => order[(order.indexOf(player.switching > 0 ? player.switchTo : player.weapon) + 1) % order.length];
 function updateAmmo() {
   const w = weapon();
-  $('gunname').textContent = w.name;
-  $('rounds').textContent = player.reloading > 0 || player.switching > 0 ? '--' : player.ammo;
-  $('ammonote').textContent = player.reloading > 0 ? 'reloading' : `${player.spare} spare`;
-  $('swap').textContent = WEAPONS[nextWeapon()].short;
-  $('swap').setAttribute('aria-label', 'Switch to the ' + WEAPONS[nextWeapon()].name);
+  putText('gunname', w.name);
+  putText('rounds', player.reloading > 0 || player.switching > 0 ? '--' : player.ammo);
+  putText('ammonote', player.reloading > 0 ? 'reloading' : `${player.spare} spare`);
+  putText('swap', WEAPONS[nextWeapon()].short);
+  putAttr('swap', 'aria-label', 'Switch to the ' + WEAPONS[nextWeapon()].name);
 }
 function begin() {
   if (!game.ready) return;
@@ -308,10 +313,10 @@ function updatePlayer(dt) {
   crouchBlend += ((crouchWanted ? 1 : 0) - crouchBlend) * blend;
   const sp = (crouchWanted ? PLAYER_CONTROL.crouchSpeed : aiming ? MOVEMENT.aim : run ? MOVEMENT.sprint : MOVEMENT.walk) * Math.min(1, l);
   if (l > 1e-3) { fx /= l; fz /= l; }
-  $('crouch').setAttribute('aria-pressed', String(crouchWanted));
-  $('aim').setAttribute('aria-pressed', String(aiming));
-  $('sprint').setAttribute('aria-pressed', String(!!run || sprintWanted));
-  $('cross').style.opacity = String(1 - Math.max(aimBlend, sprintBlend));
+  putAttr('crouch', 'aria-pressed', String(crouchWanted));
+  putAttr('aim', 'aria-pressed', String(aiming));
+  putAttr('sprint', 'aria-pressed', String(!!run || sprintWanted));
+  put($('cross').style, 'opacity', String(1 - Math.max(aimBlend, sprintBlend)));
   camera.fov = MOVEMENT.hipFov + (w.adsFov - MOVEMENT.hipFov) * aimBlend + 3 * sprintBlend;
   camera.updateProjectionMatrix();
   const s = Math.sin(player.yaw), c = Math.cos(player.yaw);
@@ -334,8 +339,8 @@ function updatePlayer(dt) {
   }
   const indoors = !!roomAt(player.x, player.z);
   if (indoors !== torchAuto) { torchAuto = indoors; if (!torchManual) torchOn = indoors; } // the torch comes on by itself indoors; F overrides
-  $('flashlight').setAttribute('aria-pressed', String(torchOn));
-  $('flashlight').textContent = torchOn ? 'LIGHT ON' : 'LIGHT OFF';
+  putAttr('flashlight', 'aria-pressed', String(torchOn));
+  putText('flashlight', torchOn ? 'LIGHT ON' : 'LIGHT OFF');
   torch.intensity += ((torchOn && game.started ? TORCH_POWER : 0) - torch.intensity) * Math.min(1, dt * 10);
   if (player.healing > 0) { player.healing -= dt; if (player.healing <= 0) { player.healing = 0; if (player.hp > 0) player.hp = Math.min(100, player.hp + MEDKIT.heal); } }
   const bob = Math.sin(player.bob * 2) * 0.022 * Math.min(1, sp / MOVEMENT.walk) * (1 - aimBlend * 0.9) * (player.airborne ? 0 : 1) * (1 - 0.6 * crouchBlend);
@@ -363,7 +368,7 @@ function updatePlayer(dt) {
   updateLoot(dt);
   if (shotQueued && sprintBlend <= 0.08) fire();
   else if (game.firing || padFire) fire(true);
-  $('hpfill').style.width = clamp(player.hp, 0, 100) + '%'; updateMeds();
+  put($('hpfill').style, 'width', clamp(player.hp, 0, 100) + '%'); updateMeds();
   updateAmmo();
 }
 
@@ -394,7 +399,7 @@ function pollController(dt){
  let pads=[];try{pads=globalThis.navigator?.getGamepads?.()||[];}catch{/* API may be blocked by an embedding host. */}
  const sample=controller.sample(pads,dt,!document.hidden&&(document.hasFocus?.()??true));
  const status=$('controller-status');
- if(status)status.textContent=sample.connected?'Controller ready · A / × to start · Menu opens inventory':sample.unsupported?'Controller detected, but this browser has no standard mapping. Use touch or keyboard.':'Controller: connect and press a button to detect it.';
+ if(status)put(status,'textContent',sample.connected?'Controller ready · A / × to start · Menu opens inventory':sample.unsupported?'Controller detected, but this browser has no standard mapping. Use touch or keyboard.':'Controller: connect and press a button to detect it.');
  if(!sample.connected){
   if(hadController&&game.controllerMode){controllerMode(false);if(game.started&&!game.dead)setInventoryOpen(true);}
   hadController=false;return;
