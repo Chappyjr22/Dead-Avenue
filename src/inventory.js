@@ -1,4 +1,5 @@
 // Inventory operations share the live weapon reserves and medkit count.
+import { WEAPONS, MEDKIT } from './data.js';
 export const ITEMS = {
   ammo: { name: 'Pistol ammo', max: 120, amount: 12, detail: '12 pistol rounds', icon: 'ammo' },
   rifleAmmo: { name: 'Rifle ammo', max: 180, amount: 30, detail: '30 rifle rounds', icon: 'ammo' },
@@ -62,6 +63,16 @@ export function updateSurvival(player,dt) {
   player.thirst=Math.max(0,player.thirst-dt*SURVIVAL.thirstPerSecond*rate);
   player.hp=Math.max(0,player.hp-empty*SURVIVAL.damagePerSecond);
 }
+// Dying costs what you carried. Weapons stay, back to their starting rounds; equipped gear stays; medkits go back to
+// the starting number; food, water and every extra round are gone. Returns what was lost, by item kind.
+export function applyDeath(player){
+ const lost={food:player.supplies.food||0,water:player.supplies.water||0,ammo:0,rifleAmmo:0,medkit:Math.max(0,player.medkits-MEDKIT.start)};
+ for(const [id,w] of Object.entries(WEAPONS)){const g=player.guns[id],extra=Math.max(0,g.ammo+g.spare-w.mag-w.spare);if(id==='makarov')lost.ammo=extra;else if(id==='ak47')lost.rifleAmmo=extra;g.ammo=w.mag;g.spare=w.spare;}
+ player.supplies={food:0,water:0};player.medkits=MEDKIT.start;player.healing=0;
+ return lost;
+}
+// "2 canned beans, 36 pistol rounds" for the death screen; empty when nothing was lost.
+export const describeLoss=lost=>Object.entries(lost).filter(([,n])=>n>0).map(([k,n])=>k==='ammo'?`${n} pistol rounds`:k==='rifleAmmo'?`${n} rifle rounds`:`${n} ${k==='water'?`bottle${n>1?'s':''} of water`:ITEMS[k].name.toLowerCase()+(n>1&&k==='medkit'?'s':'')}`).join(', ');
 export function chooseLoot(type,roll) {
   if(roll>.985)return 'fieldPack';
   if(roll>.96)return 'hikingPack';

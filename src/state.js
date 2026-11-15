@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { newSupplies, newEquipment } from './inventory.js';
 import { WEAPONS, START_WEAPON, MEDKIT } from './data.js';
+import { newDaytime } from './daynight.js';
 
 // Each weapon keeps its own loaded and spare rounds; player.ammo and player.spare read and write the held one's.
 const newArsenal = () => Object.fromEntries(Object.entries(WEAPONS).map(([id, w]) => [id, { ammo: w.mag, spare: w.spare }]));
@@ -18,5 +19,7 @@ const player = createPlayer();
 const zombies = [];
 const game = { ready: false, started: false, dead: false, touchMode: false, firing: false, inventoryOpen: false, controllerMode: false };
 const clock = new THREE.Clock();
+// The game clock: day number and hour (0 to 24). It runs only while playing, and carries on through deaths.
+const daytime = newDaytime();
 
-export { player, zombies, game, clock, newArsenal, createPlayer };
+export { player, zombies, game, clock, daytime, newArsenal, createPlayer };

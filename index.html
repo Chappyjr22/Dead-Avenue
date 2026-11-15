@@ -113,11 +113,26 @@ body {
 #go:disabled { opacity: 0.5; cursor: default; }
 #note { font-size: 11px; opacity: 0.6; }
 
-#controller-hint{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:4;color:#c3cbb8;font:10px var(--mono);pointer-events:none;white-space:nowrap;}
+#controller-hint{position:fixed;top:calc(40px + env(safe-area-inset-top, 0px));left:50%;transform:translateX(-50%);z-index:4;color:#c3cbb8;font:10px var(--mono);pointer-events:none;white-space:nowrap;}
 #controller-status{font:11px var(--mono);color:#b6bfae;line-height:1.6;}
 #bag { position:fixed;z-index:5;left:max(16px,env(safe-area-inset-left));top:52px;min-height:44px;padding:8px 14px;border:1px solid var(--line);border-radius:8px;background:var(--smoke);color:var(--dusk);font:700 13px var(--mono);touch-action:manipulation; }
 #needs { display:flex;gap:12px;font-size:10px;letter-spacing:.02em;margin-top:3px; }
 #needs.low { color:#ffb56a; }
+/* Day counter and clock, top centre: a sun or moon mark, the day, the time. */
+#clock {
+  left: 50%; top: calc(16px + env(safe-area-inset-top, 0px)); transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; padding: 4px 10px; white-space: nowrap;
+  background: var(--smoke); border: 1px solid var(--line); border-radius: 999px; font-variant-numeric: tabular-nums;
+}
+#clock i { width: 9px; height: 9px; border-radius: 50%; background: var(--ember); box-shadow: 0 0 6px var(--ember); }
+#clock[data-phase="night"] i { background: transparent; box-shadow: inset -3px 1px 0 0 #b9c6e4; }
+#clock[data-phase="night"] { color: #c9d2e6; border-color: rgba(185, 198, 228, 0.3); }
+#clock-day { font-family: var(--display); font-weight: 800; font-size: 15px; letter-spacing: 0.06em; line-height: 1; }
+#phase {
+  left: 50%; top: 24%; transform: translateX(-50%); width: max-content; max-width: min(80vw, 420px); text-align: center;
+  font-family: var(--display); font-weight: 800; font-size: clamp(20px, 6vw, 30px); letter-spacing: 0.06em; line-height: 1.1;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8); text-wrap: balance;
+}
 #inventory,#inventory *{box-sizing:border-box;}
 .item-art{object-fit:contain;filter:drop-shadow(0 3px 3px #0006);pointer-events:none;}
 .equipment{overflow:auto;min-height:0;}
@@ -171,6 +186,8 @@ body {
 
 <button class="tbtn" id="jump" aria-label="Jump" hidden>JUMP</button>
 <button class="tbtn" id="crouch" aria-label="Toggle crouch" aria-pressed="false" hidden>CROUCH</button>
+<div class="hud" id="clock" data-phase="day" hidden><i aria-hidden="true"></i><span id="clock-day">DAY 1</span><span id="clock-time">07:30</span></div>
+<div class="hud" id="phase" role="status" aria-live="polite" hidden></div>
 <div class="hud" id="tally" hidden>Put down <span id="kills">0</span></div>
 <div class="hud" id="cross" hidden></div>
 <div class="hud" id="vitals" hidden><div id="vrow"><span>Health</span><span id="meds"><b aria-hidden="true">+</b><span id="medcount">Medkits 1/3</span></span></div><div id="hpbar"><div id="hpfill"></div></div><div id="needs" hidden><span>HUNGER <b id="hunger-value">100%</b></span><span>THIRST <b id="thirst-value">100%</b></span></div></div>
@@ -189,7 +206,7 @@ body {
 <div id="veil">
   <div id="card">
     <h1 id="title">Dead Avenue</h1>
-    <p id="blurb">Look test for the zombie survival game: one empty stretch of city at dusk, a pistol, and a few of them still walking.</p>
+    <p id="blurb">Scavenge the dead city by day. Each night more of them walk, faster and further-sighted than the last. Noise draws them: gunfire most of all, running a little, crouching not at all.</p>
     <dl id="keys">
       <dt>WASD</dt><dd>Move, hold Shift to run</dd>
       <dt>Mouse</dt><dd>Look, left click fires; hold right click or tap Q to aim</dd>
