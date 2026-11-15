@@ -393,7 +393,8 @@ function pollController(dt){
  lastControllerContext=context;
  let pads=[];try{pads=globalThis.navigator?.getGamepads?.()||[];}catch{/* API may be blocked by an embedding host. */}
  const sample=controller.sample(pads,dt,!document.hidden&&(document.hasFocus?.()??true));
- $('controller-status').textContent=sample.connected?'Controller ready · A / × to start · Menu opens inventory':sample.unsupported?'Controller detected, but this browser has no standard mapping. Use touch or keyboard.':'Controller: connect and press a button to detect it.';
+ const status=$('controller-status');
+ if(status)status.textContent=sample.connected?'Controller ready · A / × to start · Menu opens inventory':sample.unsupported?'Controller detected, but this browser has no standard mapping. Use touch or keyboard.':'Controller: connect and press a button to detect it.';
  if(!sample.connected){
   if(hadController&&game.controllerMode){controllerMode(false);if(game.started&&!game.dead)setInventoryOpen(true);}
   hadController=false;return;

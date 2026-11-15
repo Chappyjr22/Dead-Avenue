@@ -9,7 +9,8 @@ import { ITEMS, pickupRoom, newEquipment, itemCount, collectItem, updateSurvival
 import { createPlayer, newArsenal } from '../src/state.js';
 function setup(pickSpots = []) {
  const elements=new Map(),events={};
- function el(id) { if(!elements.has(id))elements.set(id,{hidden:true,style:{},firstElementChild:{style:{}},handlers:{},attrs:{},addEventListener(n,f){(this.handlers[n]??=[]).push(f);},setAttribute(k,v){this.attrs[k]=v;},emit(n,e={}){for(const f of this.handlers[n]||[])f(e);}});return elements.get(id); }
+ const pageIds=new Set([...fs.readFileSync(new URL('../index.html',import.meta.url),'utf8').matchAll(/id="([^"]+)"/g)].map(m=>m[1]));
+ function el(id) { if(!pageIds.has(id))return null; if(!elements.has(id))elements.set(id,{hidden:true,style:{},firstElementChild:{style:{}},handlers:{},attrs:{},addEventListener(n,f){(this.handlers[n]??=[]).push(f);},setAttribute(k,v){this.attrs[k]=v;},emit(n,e={}){for(const f of this.handlers[n]||[])f(e);}});return elements.get(id); }
  const player=Object.assign(createPlayer(),{pitch:0});
  const game={ready:true,started:false,dead:false,touchMode:true,firing:false};
  const camera=new THREE.PerspectiveCamera(),scene=new THREE.Scene();
@@ -354,3 +355,10 @@ test('controller starts and restarts, jumps once, switches gun, holds rifle fire
  press(2);assert.ok(player.reloading>0);release();
  player.hp=0;api.updatePlayer(.05);release();press(0);assert.equal(player.hp,100);assert.equal(game.started,true);
 });
+
+ test('first title frame polls controllers against real page IDs before loading assets',()=>{
+ const {api,game,el}=setup();game.ready=false;
+ assert.doesNotThrow(()=>api.pollController(0));
+ assert.match(el('controller-status').textContent,/connect/);
+ assert.doesNotThrow(()=>api.updatePlayer(.016));
+ });
