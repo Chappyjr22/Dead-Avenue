@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {createPlayer} from '../src/state.js';
-import {ITEMS,itemCount,consumeItem} from '../src/inventory.js';
+import {ITEMS,GEAR,itemCount,consumeItem,capacity,usedSlots,inventoryStacks} from '../src/inventory.js';
 test('backpack opens only during play, uses supplies, closes for healing, and clears controls',()=>{
  const nodes=new Map(),events=[];let resets=0,heals=0;
- const $=id=>{if(!nodes.has(id))nodes.set(id,{hidden:true,handlers:{},classList:{toggle(){}},setAttribute(){},focus(){},addEventListener(n,f){this.handlers[n]=f;},querySelectorAll(){return [];}});return nodes.get(id);};
+ const $=id=>{if(!nodes.has(id))nodes.set(id,{hidden:true,handlers:{},classList:{toggle(){},add(){}},setAttribute(){},focus(){},addEventListener(n,f){this.handlers[n]=f;},appendChild(){},querySelectorAll(){return [];}});return nodes.get(id);};
  const player=createPlayer(),game={started:false,dead:false,inventoryOpen:false};
- const context={player,game,ITEMS,itemCount,consumeItem,$,document:{exitPointerLock(){}},addEventListener(n,f){events.push(f);}};
+ const context={player,game,ITEMS,GEAR,itemCount,consumeItem,capacity,usedSlots,inventoryStacks,itemArt:()=>"",$,document:{exitPointerLock(){},createElement(){return $(Math.random());}},addEventListener(n,f){events.push(f);}};
  const src=fs.readFileSync(new URL('../src/inventory-ui.js',import.meta.url),'utf8').replace(/^import .*;$/gm,'').replace(/export function/g,'function');
  vm.runInNewContext(src+';globalThis.install=installInventoryUI;',context);
  context.install({resetInput(){resets++;},heal(){heals++;}});

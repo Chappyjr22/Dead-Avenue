@@ -26,7 +26,12 @@ export function buildLoot(kind) {
     const mesh=part(new THREE.PlaneGeometry(w,h),m,0,y,z);
     if(top)mesh.rotation.x=-Math.PI/2;
   }
-  if(kind==='food'){
+  if(['hikingPack','fieldPack','cargoVest'].includes(kind)){
+    part(box(.28,.32,.14),material,0,.09);
+    part(box(.22,.12,.055),metal,0,.015,.095);
+    for(const x of [-.09,.09])part(box(.025,.3,.025),metal,x,.09,-.085);
+    panel(kind==='cargoVest'?'CARGO':'PACK','#303c2d',.23,.12,.14,.071);
+  }else if(kind==='food'){
     part(cylinder(.065,.065,.15),material);
     part(cylinder(.067,.067,.009),metal,0,.079);
     part(cylinder(.067,.067,.009),metal,0,-.079);

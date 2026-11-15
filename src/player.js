@@ -1,7 +1,7 @@
 // Player input, the weapons and torch, pickups and the HUD.
 import './streets.js'; // pickups are placed by the city build
 import * as THREE from 'three';
-import { ITEMS, itemCount, collectItem, updateSurvival, newSupplies } from './inventory.js';
+import { ITEMS, pickupRoom, newEquipment, itemCount, collectItem, updateSurvival, newSupplies } from './inventory.js';
 import { buildLoot } from './loot-model.js';
 import { installInventoryUI, updateInventoryUI } from './inventory-ui.js';
 import { rnd, clamp, $ } from './util.js';
@@ -49,7 +49,7 @@ const pickups = pickSpots.map(p => {
   m.position.copy(p);m.rotation.y=rnd()*3;scene.add(m);
   return {m,taken:false,kind,name:def.name.toUpperCase(),amount:def.amount,glow:.5};
 });
-const medFull = item => itemCount(player,item.kind)>=ITEMS[item.kind].max;
+const medFull = item => pickupRoom(player,item.kind)===0;
 // Choose one visible item near the centre of the player's view. Revalidate on
 // interaction so turning away, moving out of reach, or a wall cannot grant loot.
 const lootDirection = new THREE.Vector3(), lootOffset = new THREE.Vector3();
@@ -82,7 +82,7 @@ function updateLoot(dt = 0) {
   if (target) {
     const { item } = target, med = item.kind === 'medkit', full = medFull(item), reachable = target.distance <= LOOT.reach && !full;
     $('loot-name').textContent = item.name;
-    $('loot-amount').textContent = full ? `Carrying ${ITEMS[item.kind].max} of ${ITEMS[item.kind].max}, no room` : (item.kind==='ammo'||item.kind==='rifleAmmo') ? item.amount+' rounds' : ITEMS[item.kind].detail;
+    $('loot-amount').textContent = full ? 'No room or already wearing equal/better gear' : (item.kind==='ammo'||item.kind==='rifleAmmo') ? item.amount+' rounds' : ITEMS[item.kind].detail;
     $('interact').disabled = !reachable;
     $('interact').textContent = full ? 'CARRYING MAX' : target.distance > LOOT.reach ? 'MOVE CLOSER' : game.touchMode ? 'PICK UP' : '[E] PICK UP';
     $('interact').setAttribute('aria-label', full ? 'Cannot carry more '+ITEMS[item.kind].name : 'Pick up '+(med?'a medkit':item.kind==='ammo'?item.amount+' rounds of pistol ammo':ITEMS[item.kind].name));
@@ -197,7 +197,7 @@ function begin() {
   game.inventoryOpen=false;$('inventory').hidden=true;
   resetInput();
   jumpHeight = verticalSpeed = crouchBlend = landingDip = 0; player.airborne = player.crouching = false;
-  if (game.dead) { game.dead = false; Object.assign(player, { x: 41, z: 44, yaw: 0, pitch: 0.03, hp: 100, hurt: 0, weapon: START_WEAPON, switchTo: START_WEAPON, switching: 0, guns: newArsenal(), kills: 0, reloading: 0, cool: 0, kick: 0, medkits: MEDKIT.start, healing: 0, hunger: 100, thirst: 100, supplies: newSupplies() }); showHeld(); pickups.forEach(p => { p.taken = false; p.m.visible = true; p.amount=ITEMS[p.kind].amount; }); $('kills').textContent = '0'; zombies.forEach(z => placeZombie(z, 30)); }
+  if (game.dead) { game.dead = false; Object.assign(player, { x: 41, z: 44, yaw: 0, pitch: 0.03, hp: 100, hurt: 0, weapon: START_WEAPON, switchTo: START_WEAPON, switching: 0, guns: newArsenal(), kills: 0, reloading: 0, cool: 0, kick: 0, medkits: MEDKIT.start, healing: 0, hunger: 100, thirst: 100, supplies: newSupplies(), equipment: newEquipment() }); showHeld(); pickups.forEach(p => { p.taken = false; p.m.visible = true; p.amount=ITEMS[p.kind].amount; }); $('kills').textContent = '0'; zombies.forEach(z => placeZombie(z, 30)); }
   game.started = true; $('veil').hidden = true; fp.visible = true;
   for (const id of ['tally', 'cross', 'vitals', 'ammo', 'bag', 'needs']) $(id).hidden = false;
   updateAmmo();
