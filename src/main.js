@@ -6,8 +6,10 @@ import { rooms, roomAt, collide, rayWorld } from './world.js';
 import { litLamps, ash } from './streets.js';
 import { player, zombies, game, clock } from './state.js';
 import { updateZombie } from './zombies.js';
-import { fp, pickups, fire, begin, updatePlayer, installPistol } from './player.js';
-import { buildArms } from './arms.js';
+import { fp, pickups, fire, begin, selectWeapon, updatePlayer, installWeapon } from './player.js';
+import { buildArms, POSES } from './arms.js';
+import { buildPistol, buildRifle } from './weapon-model.js';
+import { WEAPONS } from './data.js';
 import { initZombies } from './zombies.js';
 
 import { updateNavigation } from './navigation.js';
@@ -26,7 +28,6 @@ function frame() {
   { const a = ash.geometry.attributes.position; for (let i = 0; i < a.count; i++) { let x = a.getX(i) + dt * 0.35, y = a.getY(i) + dt * (0.08 + (i % 5) * 0.03), z = a.getZ(i) + dt * 0.12; if (x > 15) x -= 30; if (y > 15) y -= 30; if (z > 15) z -= 30; a.setXYZ(i, x, y, z); } a.needsUpdate = true; ash.position.set(Math.round(player.x / 30) * 30, 6, Math.round(player.z / 30) * 30); }
   grade.uniforms.time.value = t % 10; grade.uniforms.hurt.value = Math.max(player.hurt, game.dead ? 0.7 : 0);
   composer.render(dt);
-  if (game.firing && game.touchMode) fire();
   if (!window.__manual) requestAnimationFrame(frame);
 }
 frame();
@@ -48,12 +49,12 @@ async function loadAssets() {
   if (loading || game.ready) return;
   loading = true; $('go').disabled = true; $('go').textContent = 'Loading the city';
   try {
-    const [arms, pistol, zombie] = await Promise.all([
-      loadModel('walker'), loadModel('makarov'), loadModel('city-zombie')
+    const [arms, pistol, rifle, zombie] = await Promise.all([
+      loadModel('walker'), loadModel(WEAPONS.makarov.model), loadModel(WEAPONS.ak47.model), loadModel('city-zombie')
     ]);
-    const armRig = buildArms(arms.scene);
-    installPistol(pistol);
-    fp.add(armRig);
+    // One arm rig per weapon, each posed onto its own grip.
+    installWeapon('makarov', buildPistol(pistol), buildArms(arms.scene, POSES.makarov));
+    installWeapon('ak47', buildRifle(rifle), buildArms(arms.scene, POSES.ak47));
     initZombies(zombie);
     game.ready = true; $('go').textContent = 'Enter the city'; $('note').textContent = 'Sound starts when you enter.';
   } catch (error) {
@@ -64,4 +65,4 @@ async function loadAssets() {
 $('go').addEventListener('click', () => { if (!game.ready) loadAssets(); });
 loadAssets();
 
-window.__game = { updateNavigation, updateZombie, player, zombies, camera, begin, frame, renderer, rooms, pickups, collide, roomAt, rayWorld };
+window.__game = { updateNavigation, updateZombie, updatePlayer, player, zombies, camera, begin, frame, fire, selectWeapon, fp, game, renderer, rooms, pickups, collide, roomAt, rayWorld };

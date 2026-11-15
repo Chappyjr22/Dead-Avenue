@@ -34,8 +34,12 @@ function placeZombie(z, minDist) {
 function updateZombie(z, dt) {
   const r = z.root, dx = player.x - r.position.x, dz = player.z - r.position.z, dist = Math.hypot(dx, dz);
   if (z.dead) {
+    const v = z.visual;
+    // The body falls away from the shooter, hardest where the killing shot struck.
+    if (!v.ragdoll) { v.deathImpulse ??= { x: -dx, z: -dz }; v.hitHeight ??= z.hitY; }
     z.dead += dt;
-    updateZombieVisual(z.visual, dt, { dead: true });
+    updateZombieVisual(v, dt, { dead: true, ground: groundY, collide });
+    // The ragdoll sleeps within 3 s; after that the skeleton follows the root, which sinks the body.
     r.position.y = groundY(r.position.x, r.position.z) - Math.max(0, z.dead - 9) * 0.25;
     if (z.dead > 12) placeZombie(z, 45);
     return;

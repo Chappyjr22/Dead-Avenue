@@ -30,6 +30,8 @@ const sfx = {
   land() { burst(0.16, 260, 0.28); },
   pickup() { burst(0.07, 1800, 0.2); playerVoice?.play('pickup'); },
   shot() { burst(0.32, 2600, 0.9); burst(0.9, 700, 0.25); tone(150, 45, 0.16, 0.8); },
+  rifle() { burst(0.22, 3400, 0.75); burst(0.45, 1500, 0.8); burst(1.3, 420, 0.35); tone(105, 32, 0.22, 1.0); tone(70, 28, 0.3, 0.6, 'triangle'); }, // sharper crack, deeper body and a longer tail than the pistol
+  swap() { burst(0.08, 900, 0.25, 1.2, 'bandpass'); setTimeout(() => burst(0.05, 2600, 0.25, 2, 'bandpass'), 230); }, // sling rustle, then the new weapon settles in the hands
   dry() { burst(0.04, 4000, 0.25, 2, 'highpass'); },
   reload() { burst(0.05, 3000, 0.3, 2, 'bandpass'); setTimeout(() => burst(0.07, 1800, 0.35, 2, 'bandpass'), 520); setTimeout(() => burst(0.05, 3500, 0.3, 2, 'bandpass'), 900); },
   groan(vol, pan) { const f = 62 + Math.random() * 40; tone(f, f * 0.72, 1.1 + Math.random() * 0.8, vol, 'sawtooth', pan); },

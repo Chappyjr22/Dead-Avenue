@@ -1,6 +1,7 @@
 // Builds dist/ in the shape the Claude artifact host wants: a page fragment,
 // the game modules, and the models embedded as base64 (the host does not serve .glb files).
 import fs from 'fs';
+import path from 'path';
 fs.rmSync('dist', { recursive: true, force: true });
 fs.mkdirSync('dist', { recursive: true });
 const html = fs.readFileSync('index.html', 'utf8');
@@ -9,7 +10,8 @@ if (!m) throw new Error('page markers not found in index.html');
 fs.writeFileSync('dist/index.html', m[1]);
 fs.rmSync('dist/src', { recursive: true, force: true });
 fs.cpSync('src', 'dist/src', { recursive: true });
-for (const name of ['walker', 'makarov', 'city-zombie']) {
+for (const name of ['walker', 'makarov', 'weapons/ak47', 'city-zombie']) {
+  fs.mkdirSync(path.dirname('dist/' + name), { recursive: true });
   fs.writeFileSync('dist/' + name + '-data.js', '// Embedded glTF model.\nexport default ' + JSON.stringify(fs.readFileSync('assets/' + name + '.glb').toString('base64')) + ';\n');
 }
 if (fs.existsSync('assets/audio')) fs.cpSync('assets/audio', 'dist/assets/audio', { recursive: true });

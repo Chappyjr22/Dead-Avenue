@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {loadGeometry} from '../tools/inspect-models.mjs';
-import {buildPistol} from '../src/weapon-model.js';
-import {buildArms, GUN_POS} from '../src/arms.js';
+import {buildPistol,buildRifle} from '../src/weapon-model.js';
+import {buildArms, GUN_POS, POSES} from '../src/arms.js';
+import {WEAPONS} from '../src/data.js';
 import {prepareZombieModel,createZombieVisual,resetZombieVisual,hitZombieVisual,updateZombieVisual} from '../src/zombie-visual.js';
 const city=await loadGeometry('assets/city-zombie.glb');
 test('Makarov is seated, points forward, and keeps the existing arm rig', async()=>{
@@ -28,9 +29,9 @@ test('zombies have independent skeletons and transition through walk, hit, attac
  const before=bone(b.body).quaternion.toArray();
  hitZombieVisual(a);updateZombieVisual(a,.1,{speed:.8});assert.equal(a.current,'hit');
  updateZombieVisual(a,.6,{attacking:true});assert.equal(a.current,'attack');
- updateZombieVisual(a,5,{dead:true});assert.equal(a.current,'death');assert.equal(a.actions.death.paused,true);
+ for(let i=0;i<360;i++)updateZombieVisual(a,1/60,{dead:true});assert.equal(a.current,'ragdoll');assert.equal(a.ragdoll.sleeping,true);
  assert.deepEqual(bone(b.body).quaternion.toArray(),before);
- resetZombieVisual(a);assert.equal(a.current,'idle');assert.equal(a.actions.death.isRunning(),false);
+ resetZombieVisual(a);assert.equal(a.current,'idle');assert.equal(a.ragdoll,null);
  updateZombieVisual(a,.2,{speed:.8});assert.equal(a.current,'walk');
  for(const visual of [a,b]){visual.root.updateMatrixWorld(true);visual.root.traverse(o=>{assert.ok(o.matrixWorld.elements.every(Number.isFinite));});}
 });
@@ -38,7 +39,7 @@ test('new zombies contain all four required source clips and a derived idle pose
  assert.equal(city.animations.length,4);
  const model=prepareZombieModel(city);
  assert.throws(()=>prepareZombieModel({...city,animations:[]}),/missing/);
- assert.equal(model.clips.death.name,'BossDeath');
+ assert.equal(model.clips.death,undefined);
  assert.ok(model.clips.idle.tracks.length>0);
  // Textures are intentionally skipped only by the geometry test loader.
  assert.ok(city.scene.children.length>0);
@@ -60,4 +61,67 @@ test('two-handed viewmodel retains its support arm and seated trigger finger', a
  });
  assert.ok(supportVertices>0,'support arm remains visible');
  assert.ok(indexTip.distanceTo(new THREE.Vector3(.075,-.135,-.50))<.025,'finger reaches the trigger');
+});
+
+// The AK-47: real scale, muzzle down camera -Z, its own two-handed arm rig, and iron sights that ADS lines up.
+const AK=WEAPONS.ak47;
+const rifleModel=async()=>buildRifle(await loadGeometry('assets/weapons/ak47.glb'));
+test('AK-47 loads at real scale with its muzzle forward and magazine seated', async()=>{
+ const model=await rifleModel();
+ const box=new THREE.Box3().setFromObject(model), size=box.getSize(new THREE.Vector3());
+ assert.ok(size.z>.85 && size.z<.9,'about 0.88 m long');
+ const body=new THREE.Box3().setFromObject(model.getObjectByName('AK_47')),mag=new THREE.Box3().setFromObject(model.getObjectByName('Magazine'));
+ assert.ok(mag.intersectsBox(body),'magazine seated in the receiver');
+ const trigger=new THREE.Box3().setFromObject(model.getObjectByName('Trigger')).getCenter(new THREE.Vector3());
+ assert.ok(box.min.z<-.3 && box.max.z>.5,'muzzle toward -Z, stock toward +Z');
+ assert.ok(trigger.z>mag.getCenter(new THREE.Vector3()).z,'trigger sits behind the magazine, so -Z is forward');
+ assert.throws(()=>buildRifle({scene:new THREE.Group()}),/AK-47/);
+});
+const placed=(mount)=>new THREE.Matrix4().compose(new THREE.Vector3(...mount.pos),new THREE.Quaternion().setFromEuler(new THREE.Euler(...mount.rot)),new THREE.Vector3().setScalar(mount.scale));
+test('rifle arm rig: right hand on the pistol grip with the finger at the trigger, left hand on the handguard, elbows bent the right way', async()=>{
+ const arms=buildArms((await loadGeometry('assets/walker.glb')).scene,POSES.ak47);arms.updateMatrixWorld(true);
+ const at=n=>arms.getObjectByName('mixamorig'+n).getWorldPosition(new THREE.Vector3()), M=placed(AK.mount), local=p=>new THREE.Vector3(...p).applyMatrix4(M);
+ const trigger=local([0,-0.05,0.243]),grip=local([0,-0.09,0.3]),guard=local([0,-0.005,-0.06]);
+ assert.ok(at('RightHandIndex4').distanceTo(trigger)<.035,'index finger reaches the trigger');
+ assert.ok(at('RightHandMiddle1').distanceTo(grip)<.06,'right hand wraps the pistol grip');
+ const leftPalm=at('LeftHandMiddle1');
+ assert.ok(leftPalm.distanceTo(guard)<.07,'left hand on the handguard');
+ assert.ok(leftPalm.z<local([0,0,0.04]).z,'left hand ahead of the magazine');
+ for(const side of ['Right','Left']){
+  const S=at(side+'Arm'),E=at(side+'ForeArm'),W=at(side+'Hand');
+  const reach=E.distanceTo(S)+W.distanceTo(E);
+  assert.ok(W.distanceTo(S)<reach*.999,side+' arm is not stretched past its length');
+  const mid=S.clone().lerp(W,.5);assert.ok(E.y<mid.y,side+' elbow hangs below the shoulder-wrist line');
+  assert.ok(side==='Right'?E.x>mid.x:E.x<mid.x,side+' elbow points outward, not across the body');
+ }
+});
+test('rifle ADS puts the rear notch and the front sight post on the camera axis', async()=>{
+ const fp=new THREE.Group(),gun=new THREE.Group();fp.add(gun);
+ gun.position.fromArray(AK.mount.pos);gun.rotation.set(...AK.mount.rot);gun.scale.setScalar(AK.mount.scale);
+ fp.position.fromArray(AK.ads);fp.updateMatrixWorld(true);
+ const rear=new THREE.Vector3(-0.0026,0.042,0.047).applyMatrix4(gun.matrixWorld),post=new THREE.Vector3(-0.0026,0.04475,-0.29).applyMatrix4(gun.matrixWorld);
+ for(const p of [rear,post]){assert.ok(p.z<-.12,'in front of the eye');assert.ok(Math.hypot(p.x,p.y)/-p.z<.002,'within 0.002 rad of the aim point');}
+ assert.ok(post.z<rear.z);
+ const pistol=WEAPONS.makarov;assert.deepEqual(pistol.mount.pos,[GUN_POS.x,GUN_POS.y,GUN_POS.z]);assert.equal(pistol.ads[0],-GUN_POS.x);
+});
+
+test('ragdolls settle above terrain, retain limb lengths, respect obstacles and reset their skeleton',()=>{
+ const model=prepareZombieModel(city),v=createZombieVisual(model);
+ v.root.position.set(8,.18,-4);v.root.rotation.y=.7;v.root.scale.setScalar(1.06);
+ updateZombieVisual(v,.23,{speed:1});
+ v.deathImpulse=new THREE.Vector3(1,0,.3);v.hitHeight=1.65;
+ let collisions=0;
+ for(let i=0;i<360;i++)updateZombieVisual(v,1/60,{dead:true,ground:()=>.18,collide:p=>{collisions++;p.x=Math.min(p.x,8.8);}});
+ assert.ok(collisions>0);assert.ok(v.ragdoll.sleeping);
+ for(const p of v.ragdoll.points){
+  assert.ok(p.p.toArray().every(Number.isFinite));
+  assert.ok(p.p.y>=.18+p.radius-1e-6);
+  assert.ok(p.p.x<=8.8+1e-6);
+ }
+ const hip=v.ragdoll.points.find(p=>p.name==='Hips');
+ assert.ok(hip.p.y<.55,'hips collapsed to ground');
+ for(const l of v.ragdoll.links) if(l.min===l.max) assert.ok(Math.abs(l.a.p.distanceTo(l.b.p)-l.min)<.045,'constraint length');
+ resetZombieVisual(v);v.root.updateMatrixWorld(true);
+ const fresh=createZombieVisual(model);resetZombieVisual(fresh);
+ for(let i=0;i<v.rest.length;i++) assert.ok(v.rest[i].bone.position.distanceTo(fresh.rest[i].bone.position)<1e-5,'respawn restores idle offsets');
 });
