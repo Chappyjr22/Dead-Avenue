@@ -16,7 +16,7 @@ function createPlayer() {
 // State shared between modules.
 const player = createPlayer();
 const zombies = [];
-const game = { ready: false, started: false, dead: false, touchMode: false, firing: false, inventoryOpen: false };
+const game = { ready: false, started: false, dead: false, touchMode: false, firing: false, inventoryOpen: false, controllerMode: false };
 const clock = new THREE.Clock();
 
 export { player, zombies, game, clock, newArsenal, createPlayer };

@@ -1,9 +1,10 @@
 // Player input, the weapons and torch, pickups and the HUD.
+import { createController } from './controller.js';
 import './streets.js'; // pickups are placed by the city build
 import * as THREE from 'three';
 import { ITEMS, pickupRoom, newEquipment, itemCount, collectItem, updateSurvival, newSupplies } from './inventory.js';
 import { buildLoot } from './loot-model.js';
-import { installInventoryUI, updateInventoryUI } from './inventory-ui.js';
+import { installInventoryUI, updateInventoryUI, inventoryController } from './inventory-ui.js';
 import { rnd, clamp, $ } from './util.js';
 import { AMMO_BOX, AMMO_BOX_WEAPON, MEDKIT, MOVEMENT, LOOT, PLAYER_CONTROL, WEAPONS, START_WEAPON, WEAPON_SWITCH } from './data.js';
 import { canvas, scene, camera } from './render.js';
@@ -84,7 +85,7 @@ function updateLoot(dt = 0) {
     $('loot-name').textContent = item.name;
     $('loot-amount').textContent = full ? 'No room or already wearing equal/better gear' : (item.kind==='ammo'||item.kind==='rifleAmmo') ? item.amount+' rounds' : ITEMS[item.kind].detail;
     $('interact').disabled = !reachable;
-    $('interact').textContent = full ? 'CARRYING MAX' : target.distance > LOOT.reach ? 'MOVE CLOSER' : game.touchMode ? 'PICK UP' : '[E] PICK UP';
+    $('interact').textContent = full ? 'CARRYING MAX' : target.distance > LOOT.reach ? 'MOVE CLOSER' : game.controllerMode ? '[RB / R1] PICK UP' : game.touchMode ? 'PICK UP' : '[E] PICK UP';
     $('interact').setAttribute('aria-label', full ? 'Cannot carry more '+ITEMS[item.kind].name : 'Pick up '+(med?'a medkit':item.kind==='ammo'?item.amount+' rounds of pistol ammo':ITEMS[item.kind].name));
   }
   lootToastTime = Math.max(0, lootToastTime - dt);
@@ -201,15 +202,16 @@ function begin() {
   game.started = true; $('veil').hidden = true; fp.visible = true;
   for (const id of ['tally', 'cross', 'vitals', 'ammo', 'bag', 'needs']) $(id).hidden = false;
   updateAmmo();
-  if (game.touchMode) { for (const id of ['touch', 'fire', 'reload', 'flashlight', 'aim', 'sprint', 'heal', 'jump', 'crouch', 'swap']) $(id).hidden = false; }
-  else { try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* drag-to-look still works */ } }
+  if (game.touchMode && !game.controllerMode) { for (const id of ['touch', 'fire', 'reload', 'flashlight', 'aim', 'sprint', 'heal', 'jump', 'crouch', 'swap']) $(id).hidden = false; }
+  else if(!game.controllerMode) { try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* drag-to-look still works */ } }
 }
 $('go').addEventListener('click', begin);
 addEventListener('touchstart', () => { game.touchMode = true; }, { once: true, passive: true });
-addEventListener('keydown', e => { if(game.inventoryOpen)return; keys[e.code] = true; if (e.code === 'Space') { e.preventDefault?.(); if (!e.repeat) jump(); } if ((e.code === 'KeyC' || e.code === 'ControlLeft') && !e.repeat) { e.preventDefault?.(); toggleCrouch(); } if (e.code === 'KeyE' && !e.repeat) interact(); if (e.code === 'KeyH' && !e.repeat) heal(); if (e.code === 'KeyR') reload(); if (e.code === 'KeyQ' && !e.repeat) setAim(!aimWanted); if (e.code === 'KeyF' && !e.repeat) toggleTorch(); if ((e.code === 'Digit1' || e.code === 'Numpad1') && !e.repeat) selectWeapon(order[0]); if ((e.code === 'Digit2' || e.code === 'Numpad2') && !e.repeat) selectWeapon(order[1]); if (e.code === 'Enter' && !game.started && !$('go').disabled) begin(); });
+addEventListener('keydown', e => { controllerMode(false);if(game.inventoryOpen)return; keys[e.code] = true; if (e.code === 'Space') { e.preventDefault?.(); if (!e.repeat) jump(); } if ((e.code === 'KeyC' || e.code === 'ControlLeft') && !e.repeat) { e.preventDefault?.(); toggleCrouch(); } if (e.code === 'KeyE' && !e.repeat) interact(); if (e.code === 'KeyH' && !e.repeat) heal(); if (e.code === 'KeyR') reload(); if (e.code === 'KeyQ' && !e.repeat) setAim(!aimWanted); if (e.code === 'KeyF' && !e.repeat) toggleTorch(); if ((e.code === 'Digit1' || e.code === 'Numpad1') && !e.repeat) selectWeapon(order[0]); if ((e.code === 'Digit2' || e.code === 'Numpad2') && !e.repeat) selectWeapon(order[1]); if (e.code === 'Enter' && !game.started && !$('go').disabled) begin(); });
 addEventListener('keyup', e => { keys[e.code] = false; });
 let dragging = false;
 canvas.addEventListener('mousedown', e => {
+  controllerMode(false);
   if (game.inventoryOpen || !game.started || game.dead) return;
   if (e.button === 2) { setAim(true); return; }
   if (e.button !== 0) return;
@@ -273,6 +275,7 @@ for (const [id, action] of [['aim', () => setAim(!aimWanted)], ['sprint', toggle
   $(id).addEventListener('click', action);
 }
 function resetInput() {
+  padMove.x=padMove.y=0;padAim=padFire=false;
   sfx.stopVoice();
   $('loot').hidden = $('loot-toast').hidden = true; lootToastTime = 0;
   crouchWanted = false;
@@ -283,20 +286,20 @@ function resetInput() {
   for (const k of Object.keys(keys)) delete keys[k];
   move.x=move.y=0; moveId=lookId=fireId=null; dragging=false; game.firing=false; stick.hidden=true;
 }
-addEventListener('blur', resetInput);
+addEventListener('blur',()=>{controller.suspend();resetInput();});
 document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement && !game.touchMode) resetInput(); });
-document.addEventListener('visibilitychange', () => { if (document.hidden) resetInput(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden){controller.suspend();resetInput();} });
 
 function updatePlayer(dt) {
   if(game.inventoryOpen || document.hidden){updateInventoryUI();return;}
   if(game.started&&!game.dead)updateSurvival(player,dt);
   updateInventoryUI();
   let fx = 0, fz = 0;
-  if (game.started && !game.dead) { fx = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + move.x; fz = (keys.KeyS ? 1 : 0) - (keys.KeyW ? 1 : 0) + move.y; }
+  if (game.started && !game.dead) { fx = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + move.x + padMove.x; fz = (keys.KeyS ? 1 : 0) - (keys.KeyW ? 1 : 0) + move.y + padMove.y; }
   const l = Math.hypot(fx, fz);
   const w = weapon();
-  const aiming = aimWanted && player.reloading <= 0 && player.healing <= 0 && player.switching <= 0 && game.started && !game.dead;
-  const run = (sprintWanted || keys.ShiftLeft || keys.ShiftRight) && fz < -0.2 && l > 0.2 && !crouchWanted && !aiming && !game.firing && !shotQueued && player.cool <= 0 && player.reloading <= 0 && player.healing <= 0;
+  const aiming = (aimWanted || padAim) && player.reloading <= 0 && player.healing <= 0 && player.switching <= 0 && game.started && !game.dead;
+  const run = (sprintWanted || keys.ShiftLeft || keys.ShiftRight) && fz < -0.2 && l > 0.2 && !crouchWanted && !aiming && !game.firing && !padFire && !shotQueued && player.cool <= 0 && player.reloading <= 0 && player.healing <= 0;
   player.aiming = aiming; player.sprinting = !!run;
   const blend = 1 - Math.exp(-dt * 14);
   aimBlend += ((aiming ? 1 : 0) - aimBlend) * blend;
@@ -359,7 +362,7 @@ function updatePlayer(dt) {
   }
   updateLoot(dt);
   if (shotQueued && sprintBlend <= 0.08) fire();
-  else if (game.firing) fire(true);
+  else if (game.firing || padFire) fire(true);
   $('hpfill').style.width = clamp(player.hp, 0, 100) + '%'; updateMeds();
   updateAmmo();
 }
@@ -367,6 +370,53 @@ function updatePlayer(dt) {
 // main.js hands over each weapon's prepared model and the arm rig posed for it.
 function installWeapon(id, model, arms) { held[id].gun.add(model); held[id].group.add(arms); }
 
-export { installWeapon, fp, gun, held, pickups, fire, reload, heal, begin, selectWeapon, updatePlayer };
+export { installWeapon, fp, gun, held, pickups, fire, reload, heal, begin, selectWeapon, updatePlayer, pollController };
 
-installInventoryUI({resetInput,heal});
+const setInventoryOpen=installInventoryUI({resetInput,heal});
+const controller=createController(),padMove={x:0,y:0};
+let padAim=false,padFire=false,hadController=false,lastControllerContext=null;
+const touchControls=['touch','fire','reload','flashlight','aim','sprint','heal','jump','crouch','swap'];
+function controllerMode(active){
+ if(!!game.controllerMode===active)return;
+ resetInput();game.controllerMode=active;
+ for(const id of touchControls)$(id).hidden=active||!game.touchMode||!game.started;
+ $('controller-hint').hidden=!active||!game.started;
+ $('bag').textContent=active?'PACK · MENU':'PACK · I';
+}
+// A real touch/key action takes priority over a resting controller.
+addEventListener('touchstart',()=>{game.touchMode=true;controllerMode(false);controller.suspend();},{passive:true,capture:true});
+addEventListener('keydown',()=>{controllerMode(false);controller.suspend();});
+canvas.addEventListener('mousedown',()=>{controllerMode(false);controller.suspend();});
+function pollController(dt){
+ const context=game.inventoryOpen?'inventory':game.started&&!game.dead?'play':'title';
+ if(lastControllerContext!==null&&lastControllerContext!==context){controller.suspend();resetInput();}
+ lastControllerContext=context;
+ let pads=[];try{pads=globalThis.navigator?.getGamepads?.()||[];}catch{/* API may be blocked by an embedding host. */}
+ const sample=controller.sample(pads,dt,!document.hidden&&(document.hasFocus?.()??true));
+ $('controller-status').textContent=sample.connected?'Controller ready · A / × to start · Menu opens inventory':sample.unsupported?'Controller detected, but this browser has no standard mapping. Use touch or keyboard.':'Controller: connect and press a button to detect it.';
+ if(!sample.connected){
+  if(hadController&&game.controllerMode){controllerMode(false);if(game.started&&!game.dead)setInventoryOpen(true);}
+  hadController=false;return;
+ }
+ hadController=true;
+ if(sample.blocked){padMove.x=padMove.y=0;padAim=padFire=false;return;}
+ if(sample.active)controllerMode(true);
+ if(!game.controllerMode)return;
+ const {buttons:b,edge:e}=sample;
+ $('controller-hint').hidden=!game.started||game.inventoryOpen;
+ if(!game.started||game.dead){padMove.x=padMove.y=0;padAim=padFire=false;if((e[0]||e[9])&&game.ready){begin();controller.suspend();}return;}
+ if(e[9]||e[8]){setInventoryOpen(!game.inventoryOpen);controller.suspend();return;}
+ if(game.inventoryOpen){
+  padMove.x=padMove.y=0;padAim=padFire=false;
+  $('pack-message').textContent='D-pad / left stick: select · A / ×: use · B / ○: close';
+  if(e[1]){setInventoryOpen(false);controller.suspend();return;}
+  inventoryController(sample.navigate,e[0]);return;
+ }
+ padMove.x=sample.move.x;padMove.y=sample.move.y;padAim=b[6];padFire=b[7];
+ const scale=lookScale(),curve=v=>Math.sign(v)*Math.pow(Math.abs(v),1.45);
+ player.yaw-=curve(sample.look.x)*2.4*dt*scale;
+ player.pitch=clamp(player.pitch-curve(sample.look.y)*1.8*dt*scale,-1.3,1.3);
+ if(e[0])jump();if(e[1])toggleCrouch();if(e[2])reload();if(e[3])selectWeapon(nextWeapon());
+ if(e[5])interact();if(e[10])toggleSprint();if(e[12])toggleTorch();if(e[13])heal();
+ if(e[7])fire();
+}

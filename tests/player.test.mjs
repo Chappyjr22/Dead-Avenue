@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {createController} from '../src/controller.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -13,14 +14,14 @@ function setup(pickSpots = []) {
  const game={ready:true,started:false,dead:false,touchMode:true,firing:false};
  const camera=new THREE.PerspectiveCamera(),scene=new THREE.Scene();
  const sounds=[];
- const context={ITEMS,pickupRoom,newEquipment,itemCount,collectItem,updateSurvival,newSupplies,installInventoryUI:()=>{},updateInventoryUI:()=>{},buildLoot:()=>{const m=new THREE.Group();m.material={};return m;},MEDKIT,PLAYER_CONTROL,LOOT,MOVEMENT,WEAPONS,START_WEAPON,WEAPON_SWITCH,AMMO_BOX_WEAPON,newArsenal,THREE,player,game,camera,scene,canvas:el('view'),$:el,rnd:()=>0.5,clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),
+ const context={createController,inventoryController:()=>{},navigator:{getGamepads:()=>[]},ITEMS,pickupRoom,newEquipment,itemCount,collectItem,updateSurvival,newSupplies,installInventoryUI:()=>open=>{game.inventoryOpen=open;},updateInventoryUI:()=>{},buildLoot:()=>{const m=new THREE.Group();m.material={};return m;},MEDKIT,PLAYER_CONTROL,LOOT,MOVEMENT,WEAPONS,START_WEAPON,WEAPON_SWITCH,AMMO_BOX_WEAPON,newArsenal,THREE,player,game,camera,scene,canvas:el('view'),$:el,rnd:()=>0.5,clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),
  AMMO_BOX:12,pickSpots,zombies:[],clock:{elapsedTime:0},
  groundY:()=>0,roomAt:()=>null,collide:()=>{},rayWorld:()=>140,hitZombieVisual:()=>{},placeZombie:()=>{},audioStart:()=>{},
  sfx:{medkit(){},dry(){},shot(){sounds.push('shot');},rifle(){sounds.push('rifle');},swap(){},reload(){},thud(){},jump(){},land(){},pickup(){},voice(){},stopVoice(){}},mkCanvas:()=>({getContext:()=>({createRadialGradient:()=>({addColorStop(){}}),fillRect(){}})}),
  document:{getElementById:el,addEventListener(n,f){events[n]=f;},hidden:false},
  addEventListener(n,f){(events[n]??=[]).push(f);},innerWidth:800,setTimeout:()=>0,Math};
  const source=fs.readFileSync(new URL('../src/player.js',import.meta.url),'utf8').replace(/^import .*;.*$/gm,'').replace(/^export .*;$/gm,'');
- vm.runInNewContext(source+'\nglobalThis.api={begin,updatePlayer,torch,resetInput,fire,reload,fp,held,pickups,interact,heal,jump,toggleCrouch,selectWeapon};',context);
+ vm.runInNewContext(source+'\nglobalThis.api={begin,updatePlayer,torch,resetInput,fire,reload,fp,held,pickups,interact,heal,jump,toggleCrouch,selectWeapon,pollController};',context);
  return {context,el,events,player,game,camera,sounds,api:context.api};
 }
 test('flashlight attached, mobile toggle controls intensity and preserves manual choice',()=>{
@@ -317,4 +318,39 @@ test('backpack pause blocks movement, shots, pickup and survival drain; resume r
 test('death restart replenishes needs and resets collected consumables',()=>{
  const {api,player}=setup();api.begin();player.hunger=3;player.thirst=5;player.supplies.food=0;player.hp=0;
  api.updatePlayer(.01);api.begin();assert.equal(player.hunger,100);assert.equal(player.thirst,100);assert.deepEqual(player.supplies,{food:1,water:1});
+});
+
+test('controller drives analog movement, non-inverted look, ADS and single-shot pistol',()=>{
+ const {api,context,player,game}=setup();api.begin();
+ const pad={index:0,connected:true,mapping:'standard',axes:[.6,-.6,.5,.5],buttons:Array.from({length:17},()=>({pressed:false,value:0}))};
+ context.navigator.getGamepads=()=>[null,pad];const x=player.x,z=player.z;api.pollController(.05);api.updatePlayer(.05);
+ assert.equal(game.controllerMode,true);assert.ok(player.x>x);assert.ok(player.z<z);assert.ok(player.yaw<0);assert.ok(player.pitch<0);
+ pad.buttons[6]={pressed:true,value:1};pad.buttons[7]={pressed:true,value:1};api.pollController(.05);api.updatePlayer(.05);
+ assert.equal(player.aiming,true);assert.equal(player.ammo,11);
+ for(let i=0;i<20;i++){api.pollController(.05);api.updatePlayer(.05);}assert.equal(player.ammo,11);
+});
+test('controller menus poll while simulation is paused; disconnect clears motion and pauses',()=>{
+ const {api,context,player,game}=setup();api.begin();
+ const pad={index:0,connected:true,mapping:'standard',axes:[0,-1,0,0],buttons:Array.from({length:17},()=>({pressed:false,value:0}))};
+ context.navigator.getGamepads=()=>[pad];api.pollController(.05);api.updatePlayer(.05);
+ pad.buttons[9]={pressed:true,value:1};api.pollController(.05);assert.equal(game.inventoryOpen,true);
+ const z=player.z;api.updatePlayer(1);assert.equal(player.z,z);
+ pad.axes[1]=0;pad.buttons[9]={pressed:false,value:0};api.pollController(.05);
+ pad.buttons[1]={pressed:true,value:1};api.pollController(.05);assert.equal(game.inventoryOpen,false);
+ pad.buttons[1]={pressed:false,value:0};api.pollController(.05);pad.axes[1]=-1;api.pollController(.05);
+ context.navigator.getGamepads=()=>[];api.pollController(.05);assert.equal(game.controllerMode,false);assert.equal(game.inventoryOpen,true);
+});
+
+test('controller starts and restarts, jumps once, switches gun, holds rifle fire and reloads',()=>{
+ const {api,context,player,game}=setup();
+ const pad={index:0,connected:true,mapping:'standard',axes:[0,0,0,0],buttons:Array.from({length:17},()=>({pressed:false,value:0}))};
+ context.navigator.getGamepads=()=>[pad];
+ const release=()=>{pad.buttons.forEach(b=>{b.pressed=false;b.value=0;});api.pollController(.05);};
+ const press=i=>{pad.buttons[i]={pressed:true,value:1};api.pollController(.05);};
+ press(0);assert.equal(game.started,true);assert.equal(player.airborne,false);release();
+ press(0);assert.equal(player.airborne,true);release();
+ press(3);release();for(let i=0;i<15;i++){api.pollController(.05);api.updatePlayer(.05);}assert.equal(player.weapon,'ak47');
+ press(7);for(let i=0;i<8;i++){api.pollController(.05);api.updatePlayer(.05);}assert.ok(player.ammo<28);release();
+ press(2);assert.ok(player.reloading>0);release();
+ player.hp=0;api.updatePlayer(.05);release();press(0);assert.equal(player.hp,100);assert.equal(game.started,true);
 });

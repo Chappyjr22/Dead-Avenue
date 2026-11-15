@@ -3,6 +3,18 @@ import { ITEMS, GEAR, itemCount, consumeItem, capacity, usedSlots, inventoryStac
 import { itemArt } from './inventory-art.js';
 import { $ } from './util.js';
 let selected='food';
+let controllerSlot=0;
+export function inventoryController(direction,activate=false){
+ if(!game.inventoryOpen)return;
+ const stacks=inventoryStacks(player);
+ if(direction&&stacks.length){
+  controllerSlot=Math.max(0,Math.min(stacks.length-1,controllerSlot+direction));
+  select(stacks[controllerSlot].kind);
+  const cells=$('inventory').querySelectorAll('.inv-cell:not(:disabled)');
+  cells[controllerSlot]?.focus();cells[controllerSlot]?.scrollIntoView?.({block:'nearest'});
+ }
+ if(activate){const use=$('use-'+selected);if(use&&!use.hidden&&!use.disabled)use.click();}
+}
 const art=k=>itemArt(k);
 function select(kind){selected=kind;updateInventoryUI();}
 export function updateInventoryUI() {
@@ -37,7 +49,7 @@ export function installInventoryUI({resetInput,heal}) {
  function setOpen(open){
   if(open&&(!game.started||game.dead||player.hp<=0))return;
   resetInput();game.inventoryOpen=open;$('inventory').hidden=!open;$('bag').setAttribute('aria-expanded',String(open));
-  if(open){document.exitPointerLock?.();$('pack-message').textContent='Select an item to inspect or use it.';updateInventoryUI();$('pack-close').focus();}else $('bag').focus();
+  if(open){controllerSlot=0;const first=inventoryStacks(player)[0];if(game.controllerMode&&first)selected=first.kind;document.exitPointerLock?.();$('pack-message').textContent='Select an item to inspect or use it.';updateInventoryUI();$('pack-close').focus();}else $('bag').focus();
  }
  $('bag').addEventListener('click',()=>setOpen(!game.inventoryOpen));$('pack-close').addEventListener('click',()=>setOpen(false));
  for(const kind of ['food','water','medkit'])$('use-'+kind).addEventListener('click',()=>{
