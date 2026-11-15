@@ -1,15 +1,6 @@
-// Vector illustrations stay sharp on small displays and need no remote assets.
+// Generated cutout renders are shared by the grid, inspection panel and equipment.
+const icons=new Set(['ammo','rifleAmmo','food','water','medkit','daypack','hikingPack','fieldPack','jacket','cargoVest','makarov','ak47']);
 export function itemArt(kind){
- const shapes={
- ammo:'<path fill="#756048" d="M22 38 82 25 112 42 52 56Z"/><path fill="#aa8960" d="M22 38 52 56v49L22 84Z"/><path fill="#594b37" d="m52 56 60-14v48l-60 15Z"/><path fill="#e1cba1" d="m60 64 43-10v22L60 87Z"/><text x="65" y="74" fill="#292d28" font-size="11" transform="rotate(-12 65 74)">9 MM</text><path stroke="#c1a163" stroke-width="7" d="m26 103 18 10m-9-17 18 10m-8-17 18 10"/>',
- rifleAmmo:'<path fill="#65705a" d="m18 44 67-18 45 20-69 19Z"/><path fill="#3b493c" d="m18 44 25 21v42L18 87Z"/><path fill="#52624c" d="m43 65 69-19v42l-69 19Z"/><path fill="#dad5b8" d="m52 69 51-13v23L52 92Z"/><text x="58" y="80" fill="#283126" font-size="10" transform="rotate(-14 58 80)">7.62 MM</text>',
- food:'<path fill="#9e462d" d="M37 34h57v67c0 17-57 17-57 0Z"/><ellipse cx="65.5" cy="34" rx="28.5" ry="10" fill="#b2b3a8"/><ellipse cx="65.5" cy="34" rx="21" ry="6" fill="#787f76"/><path fill="#d7c89d" d="M38 58h55v34H38Z"/><text x="65" y="79" text-anchor="middle" fill="#543d29" font-size="13">BEANS</text><ellipse cx="65" cy="33" rx="8" ry="3" fill="none" stroke="#ddd" stroke-width="2"/>',
- water:'<path fill="#9ab7ba" d="M54 30h23v17l13 18v45c0 10-49 10-49 0V65l13-18Z"/><path fill="#d0e2df" opacity=".5" d="M47 68h7v37h-7Z"/><path fill="#315469" d="M41 73h49v27H41Z"/><text x="65" y="89" text-anchor="middle" fill="#edf0dc" font-size="10">WATER</text><rect x="52" y="22" width="27" height="13" rx="3" fill="#4c6479"/>',
- medkit:'<rect x="25" y="43" width="84" height="64" rx="9" fill="#904633"/><path d="M50 44V30h33v14" fill="none" stroke="#b6b4a4" stroke-width="7"/><path fill="#eee5d0" d="M59 55h17v14h15v16H76v15H59V85H44V69h15Z"/>',
- backpack:'<path d="M51 32V21h30v11" fill="none" stroke="#94957e" stroke-width="6"/><rect x="32" y="29" width="68" height="87" rx="19" fill="#515e4b"/><path d="M36 57h60M43 34v62m44-62v62" stroke="#90947a" stroke-width="4"/><rect x="42" y="77" width="48" height="31" rx="6" fill="#354436"/><path d="M46 84h40" stroke="#b4ac82" stroke-width="2"/>',
- clothing:'<path d="m45 26-25 14-11 35 23 8 7-17v49h55V66l7 17 22-8-12-35-25-14-20 15Z" fill="#626758"/><path d="m45 26 21 15 20-15M66 42v72" fill="none" stroke="#a3a18b" stroke-width="3"/><path fill="#3d493d" d="M43 59h17v25H43Zm30 0h17v25H73Z"/>',
- makarov:'<path fill="#737b77" d="m20 43 85-5 7 14-65 5-6 10 12 34-22 3-14-43Z"/><path fill="#393d34" d="m21 65 18-3 12 35-19 3Z"/><path fill="none" stroke="#8d9385" stroke-width="4" d="M44 59h19v19H47"/>',
- ak47:'<path stroke="#545e57" stroke-width="10" d="m17 62 101-12"/><path fill="#875732" d="m9 59 26 3-10 22H9Zm72-10 22-2 1 13-22 2Z"/><path fill="#484e44" d="m48 66 20-2 6 30-15 5Zm-9 2 10-1 4 22-11 2Z"/><path stroke="#929789" stroke-width="4" d="m104 50 22-2"/>'
- };
- return `<svg viewBox="0 0 132 132" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs><filter id="shadow-${kind}"><feDropShadow dx="0" dy="4" stdDeviation="3" flood-opacity=".45"/></filter></defs><g filter="url(#shadow-${kind})">${shapes[kind]||shapes.backpack}</g></svg>`;
+ const id=icons.has(kind)?kind:kind==='clothing'?'jacket':'daypack';
+ return `<img class="item-art" src="assets/icons/${id}.webp" width="320" height="320" alt="" aria-hidden="true" draggable="false" decoding="async">`;
 }

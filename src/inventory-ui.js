@@ -3,7 +3,7 @@ import { ITEMS, GEAR, itemCount, consumeItem, capacity, usedSlots, inventoryStac
 import { itemArt } from './inventory-art.js';
 import { $ } from './util.js';
 let selected='food';
-const art=k=>itemArt(k==='rifleAmmo'?k:ITEMS[k]?.icon||k);
+const art=k=>itemArt(k);
 function select(kind){selected=kind;updateInventoryUI();}
 export function updateInventoryUI() {
  $('hunger-value').textContent=Math.ceil(player.hunger)+'%';$('thirst-value').textContent=Math.ceil(player.thirst)+'%';
@@ -22,7 +22,7 @@ export function updateInventoryUI() {
    else {cell.classList.add('empty');cell.disabled=true;cell.setAttribute('aria-label','Empty slot');}
    grid.appendChild(cell);
   }
-  $('equip-'+slot).innerHTML=art(slot)+`<span>${gear.name}</span><small>${gear.slots} slots · equipped</small>`;
+  $('equip-'+slot).innerHTML=art(player.equipment[slot])+`<span>${gear.name}</span><small>${gear.slots} slots · equipped</small>`;
  }
  const item=ITEMS[selected];$('detail-art').innerHTML=art(selected);$('detail-title').textContent=item.name;
  $('detail-description').textContent=item.detail+(selected==='ammo'?' · Makarov reserve.':selected==='rifleAmmo'?' · AK-47 reserve.':'');
