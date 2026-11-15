@@ -17,8 +17,10 @@ export function inventoryController(direction,activate=false){
 }
 const art=k=>itemArt(k);
 function select(kind){selected=kind;updateInventoryUI();}
+const percent=(id,v)=>{const e=$(id),t=Math.ceil(v)+'%';if(e.textContent!==t)e.textContent=t;};
 export function updateInventoryUI() {
- $('hunger-value').textContent=Math.ceil(player.hunger)+'%';$('thirst-value').textContent=Math.ceil(player.thirst)+'%';
+ // Every frame: write only on change, as rewriting the same text still costs the page a layout pass.
+ percent('hunger-value',player.hunger);percent('thirst-value',player.thirst);
  $('needs').classList.toggle('low',player.hunger<20||player.thirst<20);
  if(!game.inventoryOpen)return;
  $('pack-stats').textContent=`HEALTH ${Math.ceil(player.hp)} / 100     HUNGER ${Math.ceil(player.hunger)} / 100     THIRST ${Math.ceil(player.thirst)} / 100`;

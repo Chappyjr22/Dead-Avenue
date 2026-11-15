@@ -10,7 +10,7 @@ import { createPlayer, newArsenal } from '../src/state.js';
 function setup(pickSpots = []) {
  const elements=new Map(),events={};
  const pageIds=new Set([...fs.readFileSync(new URL('../index.html',import.meta.url),'utf8').matchAll(/id="([^"]+)"/g)].map(m=>m[1]));
- function el(id) { if(!pageIds.has(id))return null; if(!elements.has(id))elements.set(id,{hidden:true,style:{},firstElementChild:{style:{}},handlers:{},attrs:{},addEventListener(n,f){(this.handlers[n]??=[]).push(f);},setAttribute(k,v){this.attrs[k]=v;},emit(n,e={}){for(const f of this.handlers[n]||[])f(e);}});return elements.get(id); }
+ function el(id) { if(!pageIds.has(id))return null; if(!elements.has(id))elements.set(id,{hidden:true,style:{},firstElementChild:{style:{}},handlers:{},attrs:{},addEventListener(n,f){(this.handlers[n]??=[]).push(f);},setAttribute(k,v){this.attrs[k]=v;},getAttribute(k){return k in this.attrs?this.attrs[k]:null;},emit(n,e={}){for(const f of this.handlers[n]||[])f(e);}});return elements.get(id); }
  const player=Object.assign(createPlayer(),{pitch:0});
  const game={ready:true,started:false,dead:false,touchMode:true,firing:false};
  const camera=new THREE.PerspectiveCamera(),scene=new THREE.Scene();
@@ -282,10 +282,10 @@ test('rifle body hits put a zombie down in fewer shots than the pistol; headshot
 });
 test('the HUD names the weapon in hand and shows its rounds',()=>{
  const {api,el,player}=setup();api.begin();api.updatePlayer(.01);
- assert.equal(el('gunname').textContent,'Makarov');assert.equal(el('rounds').textContent,12);assert.equal(el('ammonote').textContent,'24 spare');
+ assert.equal(el('gunname').textContent,'Makarov');assert.equal(el('rounds').textContent,'12');assert.equal(el('ammonote').textContent,'24 spare');
  api.selectWeapon('ak47');api.updatePlayer(.05);assert.equal(el('rounds').textContent,'--');
  for(let i=0;i<12;i++)api.updatePlayer(.05);
- assert.equal(el('gunname').textContent,'AK-47');assert.equal(el('rounds').textContent,30);assert.equal(el('ammonote').textContent,'90 spare');
+ assert.equal(el('gunname').textContent,'AK-47');assert.equal(el('rounds').textContent,'30');assert.equal(el('ammonote').textContent,'90 spare');
  assert.equal(el('swap').textContent,'PISTOL');assert.match(el('swap').attrs['aria-label'],/Makarov/);
  player.ammo=10;api.reload();api.updatePlayer(.05);assert.equal(el('ammonote').textContent,'reloading');
 });
@@ -362,3 +362,12 @@ test('controller starts and restarts, jumps once, switches gun, holds rifle fire
  assert.match(el('controller-status').textContent,/connect/);
  assert.doesNotThrow(()=>api.updatePlayer(.016));
  });
+
+test('the HUD is not rewritten when nothing on it changed',()=>{
+ const {api,el,player}=setup();api.begin();api.updatePlayer(.05);api.updatePlayer(.05);
+ let writes=0;
+ const watch=id=>{const e=el(id);let v=e.textContent;Object.defineProperty(e,'textContent',{get:()=>v,set:x=>{writes++;v=x;}});const set=e.setAttribute;e.setAttribute=function(k,x){writes++;return set.call(this,k,x);};};
+ for(const id of ['rounds','ammonote','gunname','swap','medcount','heal','aim','sprint','crouch','flashlight'])watch(id);
+ api.updatePlayer(.05);api.updatePlayer(.05);assert.equal(writes,0);
+ api.fire();api.updatePlayer(.05);assert.equal(player.ammo,11);assert.equal(el('rounds').textContent,'11');assert.equal(writes,1);
+});
