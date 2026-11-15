@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<style>body{margin:0}[hidden]{display:none!important}</style>
+<style>body{margin:0}[hidden]{display:none!important}
+</style>
 <!-- page:start -->
 <title>Dead Avenue</title>
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -111,6 +112,50 @@ body {
 #go:focus-visible, .tbtn:focus-visible { outline: 2px solid var(--dusk); outline-offset: 3px; }
 #go:disabled { opacity: 0.5; cursor: default; }
 #note { font-size: 11px; opacity: 0.6; }
+
+#controller-hint{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:4;color:#c3cbb8;font:10px var(--mono);pointer-events:none;white-space:nowrap;}
+#controller-status{font:11px var(--mono);color:#b6bfae;line-height:1.6;}
+#bag { position:fixed;z-index:5;left:max(16px,env(safe-area-inset-left));top:52px;min-height:44px;padding:8px 14px;border:1px solid var(--line);border-radius:8px;background:var(--smoke);color:var(--dusk);font:700 13px var(--mono);touch-action:manipulation; }
+#needs { display:flex;gap:12px;font-size:10px;letter-spacing:.02em;margin-top:3px; }
+#needs.low { color:#ffb56a; }
+#inventory,#inventory *{box-sizing:border-box;}
+.item-art{object-fit:contain;filter:drop-shadow(0 3px 3px #0006);pointer-events:none;}
+.equipment{overflow:auto;min-height:0;}
+#inventory {position:fixed;inset:0;z-index:20;background:linear-gradient(125deg,rgba(29,34,32,.98),rgba(17,30,38,.97));padding:18px max(22px,env(safe-area-inset-right)) 14px max(22px,env(safe-area-inset-left));color:#e4e6db;overflow:auto;}
+.pack {height:100%;display:flex;flex-direction:column;max-width:1500px;margin:auto;}
+.pack header{display:flex;align-items:center;gap:22px;flex-shrink:0;border-bottom:1px solid #61706566;padding-bottom:12px;}
+.pack h2{font:800 25px var(--display);margin:0;border-bottom:2px solid #bd6b43;padding-bottom:5px;letter-spacing:.04em;}
+.pack button{color:inherit;font-family:var(--mono);cursor:pointer;touch-action:manipulation;}
+#pack-close{margin-left:auto;border:1px solid #768075;background:transparent;padding:10px 15px;min-height:44px;}
+#pack-stats{font:11px var(--mono);white-space:pre-wrap;line-height:1.8;}
+#pack-space{color:#dfc575;font:600 13px var(--mono);white-space:nowrap;}
+.inventory-layout{display:grid;grid-template-columns:minmax(250px,1.25fr) minmax(180px,.8fr) minmax(180px,.8fr);gap:24px;flex:1;min-height:0;padding-top:16px;}
+.inventory-layout h3{font:800 21px var(--display);margin:0 0 10px;letter-spacing:.05em;}
+.storage{overflow:auto;padding-right:8px;}
+.storage h4{font:12px var(--mono);text-transform:uppercase;margin:0;padding:12px;background:#151f20;display:flex;justify-content:space-between;}
+.storage h4 small{color:#929c90;font-size:9px;}
+.slot-grid{display:grid;grid-template-columns:repeat(4,1fr);margin-bottom:14px;background:#161e1d;padding:8px;}
+.inv-cell{position:relative;min-width:0;aspect-ratio:1;border:1px solid #586359;background:#252f29;padding:0;display:flex;align-items:center;justify-content:center;}
+.inv-cell.selected{background:#394432;border-color:#ceb477;box-shadow:inset 0 0 0 1px #ceb477;}
+.inv-cell.empty{background:#1c2522;cursor:default;}
+.inv-cell span{position:absolute;top:4px;left:4px;font:9px var(--mono);text-align:left;z-index:1;}
+.inv-cell b{position:absolute;bottom:4px;right:6px;font:12px var(--mono);}
+.inv-cell .item-art{width:85%;height:85%;margin-top:10px;}
+.item-detail{min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:radial-gradient(ellipse,#39443c55,transparent 70%);}
+#detail-art{width:100%;max-width:260px;}#detail-art .item-art{width:100%;height:auto;object-fit:contain;}
+#detail-title{font:800 25px var(--display);margin:8px 0;}
+#detail-description,#detail-count{font:11px var(--mono);color:#b6bfb0;line-height:1.7;max-width:240px;}
+.item-detail button{background:#c4c9b7;color:#1c2925;border:0;padding:12px;min-height:44px;width:90%;margin-top:10px;font-weight:bold;}
+.item-detail button:disabled{opacity:.35;cursor:default;}
+.equipment-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.equipment-card{border:1px solid #5b675b;background:#202c2855;padding:8px;min-width:0;}
+.equipment-card label{font:9px var(--mono);color:#a8b3a2;display:block;}
+.equipment-card .item-art{width:100%;height:120px;object-fit:contain;}.equipment-card span,.equipment-card small{display:block;font:11px var(--mono);}.equipment-card small{font-size:9px;color:#9fae94;margin-top:5px;}
+#pack-loaded,.gear-note{font:10px var(--mono);line-height:1.7;color:#a9b4a5;}
+.pack footer{flex-shrink:0;border-top:1px solid #61706566;margin-top:10px;padding-top:8px;display:flex;justify-content:space-between;gap:12px;font:10px var(--mono);color:#aab6a5;}
+#pack-message{margin:0;}.pack button:focus-visible{outline:2px solid #f1d398;outline-offset:-3px;}
+@media(max-height:500px){#inventory{padding-top:8px;padding-bottom:8px;}.pack header{padding-bottom:5px;gap:15px;}.pack h2{font-size:21px;}#pack-stats{font-size:9px;max-width:250px;}.inventory-layout{padding-top:8px;gap:16px;}.inventory-layout h3{font-size:17px;margin-bottom:5px;}.storage h4{padding:8px;}.equipment-card .item-art{max-height:65px;}#detail-art{max-width:110px;}#detail-title{font-size:22px;margin:0;}#detail-description,#detail-count{margin:4px 0;font-size:10px;}.pack footer{padding-top:5px;margin-top:5px;}}
+@media(max-width:650px){#inventory{padding:12px;}.pack{height:auto;min-height:100%;}.pack header{flex-wrap:wrap;gap:8px;}#pack-stats{order:4;width:100%;margin:0;}.inventory-layout{grid-template-columns:1.1fr .9fr;gap:12px;}.storage{overflow:visible;padding:0;}.equipment{grid-column:1/3;}.equipment-grid{grid-template-columns:repeat(4,1fr);}.equipment-card{padding:5px;}.equipment-card .item-art{max-height:65px;}.equipment-card span{font-size:9px;}.storage h4{font-size:10px;padding:8px;}.storage h4 small{display:none;}.inv-cell span{font-size:7px;}.inv-cell b{font-size:10px;}.pack footer{flex-wrap:wrap;}#pack-space{font-size:11px;}#detail-title{font-size:22px;}}
 </style>
 
 <canvas id="view"></canvas>
@@ -128,11 +173,19 @@ body {
 <button class="tbtn" id="crouch" aria-label="Toggle crouch" aria-pressed="false" hidden>CROUCH</button>
 <div class="hud" id="tally" hidden>Put down <span id="kills">0</span></div>
 <div class="hud" id="cross" hidden></div>
-<div class="hud" id="vitals" hidden><div id="vrow"><span>Health</span><span id="meds"><b aria-hidden="true">+</b><span id="medcount">Medkits 1/3</span></span></div><div id="hpbar"><div id="hpfill"></div></div></div>
+<div class="hud" id="vitals" hidden><div id="vrow"><span>Health</span><span id="meds"><b aria-hidden="true">+</b><span id="medcount">Medkits 1/3</span></span></div><div id="hpbar"><div id="hpfill"></div></div><div id="needs" hidden><span>HUNGER <b id="hunger-value">100%</b></span><span>THIRST <b id="thirst-value">100%</b></span></div></div>
 <div class="hud" id="ammo" hidden><span id="rounds">12</span><small><span id="gunname">Makarov</span><span id="ammonote">24 spare</span></small></div>
 
+<div id="controller-hint" hidden>LT / L2 AIM · RT / R2 FIRE · RB / R1 LOOT · MENU PACK</div>
+<button id="bag" aria-label="Open backpack" aria-expanded="false" hidden>PACK · I</button>
 <div id="loot" hidden><strong id="loot-name">PISTOL AMMO</strong><span id="loot-amount">12 rounds</span><button id="interact" type="button">PICK UP</button></div>
 <div id="loot-toast" role="status" aria-live="polite" hidden></div>
+<div id="inventory" role="dialog" aria-modal="true" aria-labelledby="pack-title" hidden><section class="pack">
+<header><h2 id="pack-title">EQUIPMENT</h2><span id="pack-space"></span><p id="pack-stats"></p><button id="pack-close" aria-label="Close inventory">CLOSE ×</button></header>
+<div class="inventory-layout"><section class="storage"><h3>INVENTORY</h3><h4><span id="label-backpack"></span><small>BACKPACK</small></h4><div id="grid-backpack" class="slot-grid"></div><h4><span id="label-clothing"></span><small>CLOTHING</small></h4><div id="grid-clothing" class="slot-grid"></div></section>
+<section class="item-detail"><div id="detail-art"></div><h3 id="detail-title"></h3><p id="detail-description"></p><p id="detail-count"></p><button id="use-food" hidden>EAT</button><button id="use-water" hidden>DRINK</button><button id="use-medkit" hidden>USE MEDKIT</button></section>
+<section class="equipment"><h3>ON YOUR PERSON</h3><div class="equipment-grid"><div class="equipment-card"><label>BACKPACK</label><div id="equip-backpack"></div></div><div class="equipment-card"><label>CLOTHING</label><div id="equip-clothing"></div></div><div class="equipment-card"><label>SIDEARM</label><div id="equip-makarov"></div></div><div class="equipment-card"><label>PRIMARY</label><div id="equip-ak47"></div></div></div><p id="pack-loaded"></p><p class="gear-note">Find hiking or field backpacks and cargo vests to carry more. Picking up better gear equips it and keeps your supplies.</p></section></div>
+<footer><p id="pack-message" role="status" aria-live="polite"></p><span>GAME PAUSED · THIS RUN ONLY</span></footer></section></div>
 <div id="veil">
   <div id="card">
     <h1 id="title">Dead Avenue</h1>
@@ -144,10 +197,13 @@ body {
       <dt>E</dt><dd>Pick up the loot you are looking at</dd>
       <dt>R / F</dt><dd>Reload / torch</dd>
       <dt>1 / 2</dt><dd>Makarov pistol / AK-47 rifle; hold fire with the rifle to keep shooting</dd>
+      <dt>I / PACK</dt><dd>Open backpack. Eat and drink to maintain hunger and thirst; empty meters slowly cost health.</dd>
       <dt>H</dt><dd>Use a medkit. Health no longer comes back by itself</dd>
+      <dt>Controller</dt><dd>Left stick moves; right stick looks. LT/L2 aims, RT/R2 fires. A/× jumps, B/○ crouches, X/□ reloads, Y/△ switches guns. RB/R1 picks up loot. Click left stick to sprint. D-pad up: light; down: heal. Menu/View opens inventory; D-pad selects, A/× uses, B/○ closes.</dd>
       <dt>Phone</dt><dd>Left thumb moves; drag FIRE to look and shoot. Tap ADS to aim, PISTOL or RIFLE to change weapon, SPRINT to run, JUMP to jump, CROUCH to stay low, HEAL to use a medkit. Look at loot and tap PICK UP.</dd>
     </dl>
     <button id="go" disabled>Loading the city</button>
+    <p id="controller-status">Controller: connect and press a button to detect it.</p>
     <span id="note">Sound starts when you enter.</span>
   </div>
 </div>

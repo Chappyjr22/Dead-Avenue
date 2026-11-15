@@ -1,6 +1,10 @@
 // Player input, the weapons and torch, pickups and the HUD.
+import { createController } from './controller.js';
 import './streets.js'; // pickups are placed by the city build
 import * as THREE from 'three';
+import { ITEMS, pickupRoom, newEquipment, itemCount, collectItem, updateSurvival, newSupplies } from './inventory.js';
+import { buildLoot } from './loot-model.js';
+import { installInventoryUI, updateInventoryUI, inventoryController } from './inventory-ui.js';
 import { rnd, clamp, $ } from './util.js';
 import { AMMO_BOX, AMMO_BOX_WEAPON, MEDKIT, MOVEMENT, LOOT, PLAYER_CONTROL, WEAPONS, START_WEAPON, WEAPON_SWITCH } from './data.js';
 import { canvas, scene, camera } from './render.js';
@@ -37,29 +41,22 @@ torch.position.set(0.1, -0.06, -0.8); torch.target.position.set(0.04, -0.08, -6)
 camera.add(torch, torch.target);
 let torchOn = false, torchAuto = false, torchManual = false;
 function toggleTorch() {
-  if (!game.started || game.dead) return;
+  if (game.inventoryOpen || !game.started || game.dead) return;
   torchManual = true; torchOn = !torchOn;
 }
-// Each spot holds pistol ammo (olive box, warm glow) or a medkit (white case, red cross, cool glow).
-// The case is a light grey rather than pure white so the torch does not wash out the cross.
-const medCross = new THREE.MeshStandardMaterial({ color: 0xb01810, roughness: 0.6, emissive: 0xa0140c, emissiveIntensity: 0.8 });
-const medGeo = [new THREE.BoxGeometry(0.26, 0.11, 0.18), new THREE.BoxGeometry(0.14, 0.008, 0.045), new THREE.BoxGeometry(0.045, 0.008, 0.14), new THREE.BoxGeometry(0.045, 0.09, 0.008), new THREE.BoxGeometry(0.09, 0.045, 0.008)];
+// Every pickup remains a world item until deliberately collected.
 const pickups = pickSpots.map(p => {
-  if (p.kind === 'medkit') {
-    const m = new THREE.Mesh(medGeo[0], new THREE.MeshStandardMaterial({ color: 0x767c7a, roughness: 0.85, emissive: 0x2f7fb8, emissiveIntensity: 0.5 }));
-    for (const [g, y, z] of [[1, 0.059, 0], [2, 0.059, 0], [3, 0, 0.094], [4, 0, 0.094]]) { const c = new THREE.Mesh(medGeo[g], medCross); c.position.set(0, y, z); m.add(c); } // cross on the lid and the front
-    m.position.copy(p).setY(p.y + 0.01); m.rotation.y = rnd() * 3; scene.add(m); return { m, taken: false, kind: 'medkit', name: 'MEDKIT', amount: 1, glow: 0.6 };
-  }
-  const m = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.09, 0.13), new THREE.MeshStandardMaterial({ color: 0x55602e, roughness: 0.6, emissive: 0x8a6a20, emissiveIntensity: 0.5 }));
-  m.position.copy(p); m.rotation.y = rnd() * 3; scene.add(m); return { m, taken: false, kind: 'ammo', name: 'PISTOL AMMO', amount: AMMO_BOX, glow: 1 };
+  const kind=ITEMS[p.kind]?p.kind:'ammo', def=ITEMS[kind], m=buildLoot(kind);
+  m.position.copy(p);m.rotation.y=rnd()*3;scene.add(m);
+  return {m,taken:false,kind,name:def.name.toUpperCase(),amount:def.amount,glow:.5};
 });
-const medFull = item => item.kind === 'medkit' && player.medkits >= MEDKIT.max;
+const medFull = item => pickupRoom(player,item.kind)===0;
 // Choose one visible item near the centre of the player's view. Revalidate on
 // interaction so turning away, moving out of reach, or a wall cannot grant loot.
 const lootDirection = new THREE.Vector3(), lootOffset = new THREE.Vector3();
 let lootToastTime = 0;
 function findLoot() {
-  if (!game.started || game.dead || player.hp <= 0) return null;
+  if (game.inventoryOpen || !game.started || game.dead || player.hp <= 0) return null;
   camera.getWorldDirection(lootDirection);
   let best = null, score = -Infinity;
   for (const item of pickups) {
@@ -86,10 +83,10 @@ function updateLoot(dt = 0) {
   if (target) {
     const { item } = target, med = item.kind === 'medkit', full = medFull(item), reachable = target.distance <= LOOT.reach && !full;
     $('loot-name').textContent = item.name;
-    $('loot-amount').textContent = !med ? item.amount + ' rounds' : full ? `Carrying ${MEDKIT.max} of ${MEDKIT.max}, no room` : `Heals ${MEDKIT.heal} \u00b7 ${player.medkits} of ${MEDKIT.max} carried`;
+    $('loot-amount').textContent = full ? 'No room or already wearing equal/better gear' : (item.kind==='ammo'||item.kind==='rifleAmmo') ? item.amount+' rounds' : ITEMS[item.kind].detail;
     $('interact').disabled = !reachable;
-    $('interact').textContent = full ? 'CARRYING MAX' : target.distance > LOOT.reach ? 'MOVE CLOSER' : game.touchMode ? 'PICK UP' : '[E] PICK UP';
-    $('interact').setAttribute('aria-label', full ? `Cannot carry more than ${MEDKIT.max} medkits` : med ? 'Pick up a medkit' : 'Pick up ' + item.amount + ' rounds of pistol ammo');
+    $('interact').textContent = full ? 'CARRYING MAX' : target.distance > LOOT.reach ? 'MOVE CLOSER' : game.controllerMode ? '[RB / R1] PICK UP' : game.touchMode ? 'PICK UP' : '[E] PICK UP';
+    $('interact').setAttribute('aria-label', full ? 'Cannot carry more '+ITEMS[item.kind].name : 'Pick up '+(med?'a medkit':item.kind==='ammo'?item.amount+' rounds of pistol ammo':ITEMS[item.kind].name));
   }
   lootToastTime = Math.max(0, lootToastTime - dt);
   $('loot-toast').hidden = lootToastTime <= 0 || !game.started || game.dead;
@@ -98,15 +95,19 @@ function interact() {
   const target = findLoot();
   if (!target || target.distance > LOOT.reach || medFull(target.item)) return;
   const { item } = target;
-  item.taken = true; item.m.visible = false;
-  if (item.kind === 'medkit') { player.medkits++; sfx.thud(0.35, 0); $('loot-toast').textContent = `+1 medkit (${player.medkits} of ${MEDKIT.max})`; }
-  else { player.guns[AMMO_BOX_WEAPON].spare += item.amount; sfx.pickup(); $('loot-toast').textContent = '+' + item.amount + ' pistol rounds'; updateAmmo(); }
+  const taken=collectItem(player,item.kind,item.amount);
+  if(!taken)return;
+  item.amount-=taken;item.taken=item.amount===0;item.m.visible=!item.taken;
+  if(item.kind==='ammo'||item.kind==='rifleAmmo')sfx.pickup();else sfx.thud(.25,0);
+  $('loot-toast').textContent='+'+taken+' '+ITEMS[item.kind].name.toLowerCase();
+  updateAmmo();
+
   lootToastTime = 1.5;
   updateMeds(); updateLoot();
 }
 // H uses a medkit: it is spent at once and the health lands when the use finishes; the pistol is lowered meanwhile.
 function heal() {
-  if (!game.started || game.dead || player.hp <= 0 || player.healing > 0 || player.reloading > 0 || player.switching > 0 || player.medkits <= 0 || player.hp >= 100) return;
+  if (game.inventoryOpen || !game.started || game.dead || player.hp <= 0 || player.healing > 0 || player.reloading > 0 || player.switching > 0 || player.medkits <= 0 || player.hp >= 100) return;
   aimWanted = sprintWanted = shotQueued = false;
   player.medkits--; player.healing = MEDKIT.time; sfx.medkit(); updateMeds();
 }
@@ -119,32 +120,32 @@ const move = { x: 0, y: 0 };
 let aimWanted = false, sprintWanted = false, aimBlend = 0, sprintBlend = 0, shotQueued = false;
 let jumpHeight = 0, verticalSpeed = 0, crouchWanted = false, crouchBlend = 0, landingDip = 0;
 function jump() {
-  if (!game.started || game.dead || jumpHeight > 0.001 || verticalSpeed > 0) return;
+  if (game.inventoryOpen || !game.started || game.dead || jumpHeight > 0.001 || verticalSpeed > 0) return;
   crouchWanted = false;
   verticalSpeed = PLAYER_CONTROL.jumpSpeed;
   player.airborne = true;
   sfx.jump();
 }
 function toggleCrouch() {
-  if (!game.started || game.dead || jumpHeight > 0.001 || verticalSpeed > 0) return;
+  if (game.inventoryOpen || !game.started || game.dead || jumpHeight > 0.001 || verticalSpeed > 0) return;
   crouchWanted = !crouchWanted;
   if (crouchWanted) sprintWanted = false;
 }
 const lookScale = () => 1 - aimBlend * 0.55;
 function setAim(active) {
-  if (!game.started || game.dead) return;
+  if (game.inventoryOpen || !game.started || game.dead) return;
   aimWanted = active;
   if (active) sprintWanted = false;
 }
 function toggleSprint() {
-  if (!game.started || game.dead) return;
+  if (game.inventoryOpen || !game.started || game.dead) return;
   sprintWanted = !sprintWanted;
   if (sprintWanted) { aimWanted = false; crouchWanted = false; }
 }
 // holding: the trigger is still down from an earlier shot. Automatic weapons keep firing; an empty
 // magazine clicks once per press and reloads if there are rounds to load.
 function fire(holding = false) {
-  if (!game.started || game.dead || player.cool > 0 || player.reloading > 0 || player.healing > 0 || player.switching > 0) return;
+  if (game.inventoryOpen || !game.started || game.dead || player.cool > 0 || player.reloading > 0 || player.healing > 0 || player.switching > 0) return;
   const w = weapon();
   if (holding && !w.auto) return;
   if (holding && player.ammo <= 0) { reload(); return; }
@@ -172,12 +173,12 @@ function fire(holding = false) {
     if (best.hp <= 0) { best.dead = 0.001; best.path = []; best.navPending = null; player.kills++; $('kills').textContent = player.kills; }
   }
 }
-function reload() { if (player.reloading > 0 || player.healing > 0 || player.switching > 0 || player.ammo === weapon().mag || player.spare <= 0 || game.dead) return; aimWanted = sprintWanted = shotQueued = false; player.reloading = weapon().reload; sfx.reload(); sfx.voice('reload'); }
+function reload() { if (game.inventoryOpen || player.reloading > 0 || player.healing > 0 || player.switching > 0 || player.ammo === weapon().mag || player.spare <= 0 || game.dead) return; aimWanted = sprintWanted = shotQueued = false; player.reloading = weapon().reload; sfx.reload(); sfx.voice('reload'); }
 // Changing weapon is refused while reloading or healing. It drops aim; the held weapon lowers, and
 // the new one is taken in hand halfway through and rises.
 const order = Object.keys(WEAPONS);
 function selectWeapon(id) {
-  if (!game.started || game.dead || !WEAPONS[id] || id === player.weapon || player.switching > 0 || player.reloading > 0 || player.healing > 0) return false;
+  if (game.inventoryOpen || !game.started || game.dead || !WEAPONS[id] || id === player.weapon || player.switching > 0 || player.reloading > 0 || player.healing > 0) return false;
   aimWanted = shotQueued = false;
   player.switchTo = id; player.switching = WEAPON_SWITCH; sfx.swap();
   return true;
@@ -194,22 +195,24 @@ function updateAmmo() {
 function begin() {
   if (!game.ready) return;
   audioStart();
+  game.inventoryOpen=false;$('inventory').hidden=true;
   resetInput();
   jumpHeight = verticalSpeed = crouchBlend = landingDip = 0; player.airborne = player.crouching = false;
-  if (game.dead) { game.dead = false; Object.assign(player, { x: 41, z: 44, yaw: 0, pitch: 0.03, hp: 100, hurt: 0, weapon: START_WEAPON, switchTo: START_WEAPON, switching: 0, guns: newArsenal(), kills: 0, reloading: 0, cool: 0, kick: 0, medkits: MEDKIT.start, healing: 0 }); showHeld(); pickups.forEach(p => { p.taken = false; p.m.visible = true; }); $('kills').textContent = '0'; zombies.forEach(z => placeZombie(z, 30)); }
+  if (game.dead) { game.dead = false; Object.assign(player, { x: 41, z: 44, yaw: 0, pitch: 0.03, hp: 100, hurt: 0, weapon: START_WEAPON, switchTo: START_WEAPON, switching: 0, guns: newArsenal(), kills: 0, reloading: 0, cool: 0, kick: 0, medkits: MEDKIT.start, healing: 0, hunger: 100, thirst: 100, supplies: newSupplies(), equipment: newEquipment() }); showHeld(); pickups.forEach(p => { p.taken = false; p.m.visible = true; p.amount=ITEMS[p.kind].amount; }); $('kills').textContent = '0'; zombies.forEach(z => placeZombie(z, 30)); }
   game.started = true; $('veil').hidden = true; fp.visible = true;
-  for (const id of ['tally', 'cross', 'vitals', 'ammo']) $(id).hidden = false;
+  for (const id of ['tally', 'cross', 'vitals', 'ammo', 'bag', 'needs']) $(id).hidden = false;
   updateAmmo();
-  if (game.touchMode) { for (const id of ['touch', 'fire', 'reload', 'flashlight', 'aim', 'sprint', 'heal', 'jump', 'crouch', 'swap']) $(id).hidden = false; }
-  else { try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* drag-to-look still works */ } }
+  if (game.touchMode && !game.controllerMode) { for (const id of ['touch', 'fire', 'reload', 'flashlight', 'aim', 'sprint', 'heal', 'jump', 'crouch', 'swap']) $(id).hidden = false; }
+  else if(!game.controllerMode) { try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* drag-to-look still works */ } }
 }
 $('go').addEventListener('click', begin);
 addEventListener('touchstart', () => { game.touchMode = true; }, { once: true, passive: true });
-addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'Space') { e.preventDefault?.(); if (!e.repeat) jump(); } if ((e.code === 'KeyC' || e.code === 'ControlLeft') && !e.repeat) { e.preventDefault?.(); toggleCrouch(); } if (e.code === 'KeyE' && !e.repeat) interact(); if (e.code === 'KeyH' && !e.repeat) heal(); if (e.code === 'KeyR') reload(); if (e.code === 'KeyQ' && !e.repeat) setAim(!aimWanted); if (e.code === 'KeyF' && !e.repeat) toggleTorch(); if ((e.code === 'Digit1' || e.code === 'Numpad1') && !e.repeat) selectWeapon(order[0]); if ((e.code === 'Digit2' || e.code === 'Numpad2') && !e.repeat) selectWeapon(order[1]); if (e.code === 'Enter' && !game.started && !$('go').disabled) begin(); });
+addEventListener('keydown', e => { controllerMode(false);if(game.inventoryOpen)return; keys[e.code] = true; if (e.code === 'Space') { e.preventDefault?.(); if (!e.repeat) jump(); } if ((e.code === 'KeyC' || e.code === 'ControlLeft') && !e.repeat) { e.preventDefault?.(); toggleCrouch(); } if (e.code === 'KeyE' && !e.repeat) interact(); if (e.code === 'KeyH' && !e.repeat) heal(); if (e.code === 'KeyR') reload(); if (e.code === 'KeyQ' && !e.repeat) setAim(!aimWanted); if (e.code === 'KeyF' && !e.repeat) toggleTorch(); if ((e.code === 'Digit1' || e.code === 'Numpad1') && !e.repeat) selectWeapon(order[0]); if ((e.code === 'Digit2' || e.code === 'Numpad2') && !e.repeat) selectWeapon(order[1]); if (e.code === 'Enter' && !game.started && !$('go').disabled) begin(); });
 addEventListener('keyup', e => { keys[e.code] = false; });
 let dragging = false;
 canvas.addEventListener('mousedown', e => {
-  if (!game.started || game.dead) return;
+  controllerMode(false);
+  if (game.inventoryOpen || !game.started || game.dead) return;
   if (e.button === 2) { setAim(true); return; }
   if (e.button !== 0) return;
   if (document.pointerLockElement === canvas) { game.firing = true; fire(); }
@@ -218,12 +221,13 @@ canvas.addEventListener('mousedown', e => {
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('mouseup', e => { if (e.button === 2) setAim(false); else if (e.button === 0) { dragging = false; game.firing = false; } });
 addEventListener('mousemove', e => {
-  if (!game.started || game.dead) return;
+  if (game.inventoryOpen || !game.started || game.dead) return;
   if (document.pointerLockElement === canvas || dragging) { player.yaw -= e.movementX * 0.0022 * lookScale(); player.pitch = clamp(player.pitch - e.movementY * 0.0022 * lookScale(), -1.3, 1.3); }
 });
 // touch: left half is a floating stick, right half looks
 const touch = $('touch'), stick = $('stick'); let moveId = null, lookId = null, mo = [0, 0], lp = [0, 0];
 touch.addEventListener('touchstart', e => {
+  if(game.inventoryOpen)return;
   e.preventDefault();
   for (const t of e.changedTouches) {
     if (t.clientX < innerWidth * 0.45 && moveId === null) { moveId = t.identifier; mo = [t.clientX, t.clientY]; stick.hidden = false; stick.style.left = t.clientX - 48 + 'px'; stick.style.top = t.clientY - 48 + 'px'; stick.firstElementChild.style.transform = ''; }
@@ -231,6 +235,7 @@ touch.addEventListener('touchstart', e => {
   }
 }, { passive: false });
 touch.addEventListener('touchmove', e => {
+  if(game.inventoryOpen)return;
   e.preventDefault();
   for (const t of e.changedTouches) {
     if (t.identifier === moveId) { let dx = (t.clientX - mo[0]) / 46, dy = (t.clientY - mo[1]) / 46; const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; } move.x = dx; move.y = dy; stick.firstElementChild.style.transform = `translate(${dx * 30}px, ${dy * 30}px)`; }
@@ -243,7 +248,7 @@ touch.addEventListener('touchend', endTouch); touch.addEventListener('touchcance
 let fireId = null, firePos = [0, 0];
 $('fire').addEventListener('touchstart', e => {
   e.preventDefault();
-  if (fireId !== null || !game.started || game.dead) return;
+  if (game.inventoryOpen || fireId !== null || !game.started || game.dead) return;
   const t = e.changedTouches[0]; fireId = t.identifier; firePos = [t.clientX, t.clientY];
   game.firing = true; fire();
 }, { passive: false });
@@ -270,6 +275,7 @@ for (const [id, action] of [['aim', () => setAim(!aimWanted)], ['sprint', toggle
   $(id).addEventListener('click', action);
 }
 function resetInput() {
+  padMove.x=padMove.y=0;padAim=padFire=false;
   sfx.stopVoice();
   $('loot').hidden = $('loot-toast').hidden = true; lootToastTime = 0;
   crouchWanted = false;
@@ -280,17 +286,20 @@ function resetInput() {
   for (const k of Object.keys(keys)) delete keys[k];
   move.x=move.y=0; moveId=lookId=fireId=null; dragging=false; game.firing=false; stick.hidden=true;
 }
-addEventListener('blur', resetInput);
+addEventListener('blur',()=>{controller.suspend();resetInput();});
 document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement && !game.touchMode) resetInput(); });
-document.addEventListener('visibilitychange', () => { if (document.hidden) resetInput(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden){controller.suspend();resetInput();} });
 
 function updatePlayer(dt) {
+  if(game.inventoryOpen || document.hidden){updateInventoryUI();return;}
+  if(game.started&&!game.dead)updateSurvival(player,dt);
+  updateInventoryUI();
   let fx = 0, fz = 0;
-  if (game.started && !game.dead) { fx = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + move.x; fz = (keys.KeyS ? 1 : 0) - (keys.KeyW ? 1 : 0) + move.y; }
+  if (game.started && !game.dead) { fx = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + move.x + padMove.x; fz = (keys.KeyS ? 1 : 0) - (keys.KeyW ? 1 : 0) + move.y + padMove.y; }
   const l = Math.hypot(fx, fz);
   const w = weapon();
-  const aiming = aimWanted && player.reloading <= 0 && player.healing <= 0 && player.switching <= 0 && game.started && !game.dead;
-  const run = (sprintWanted || keys.ShiftLeft || keys.ShiftRight) && fz < -0.2 && l > 0.2 && !crouchWanted && !aiming && !game.firing && !shotQueued && player.cool <= 0 && player.reloading <= 0 && player.healing <= 0;
+  const aiming = (aimWanted || padAim) && player.reloading <= 0 && player.healing <= 0 && player.switching <= 0 && game.started && !game.dead;
+  const run = (sprintWanted || keys.ShiftLeft || keys.ShiftRight) && fz < -0.2 && l > 0.2 && !crouchWanted && !aiming && !game.firing && !padFire && !shotQueued && player.cool <= 0 && player.reloading <= 0 && player.healing <= 0;
   player.aiming = aiming; player.sprinting = !!run;
   const blend = 1 - Math.exp(-dt * 14);
   aimBlend += ((aiming ? 1 : 0) - aimBlend) * blend;
@@ -347,13 +356,13 @@ function updatePlayer(dt) {
     turn[1] * steady + Math.sin(player.bob) * 0.006 * mv * steady,
     turn[2] * steady + 0.25 * sprintBlend + Math.cos(player.bob) * 0.018 * sprintBlend + rl * rp[2] + 0.3 * sw);
   if (player.hp <= 0 && !game.dead && game.started) {
-    game.dead = true; game.started = false; player.healing = 0; jumpHeight = verticalSpeed = landingDip = 0; player.airborne = false; resetInput(); if (document.exitPointerLock) document.exitPointerLock();
+    game.dead = true; game.started = false; game.inventoryOpen=false; $('inventory').hidden=true; $('bag').hidden=true; $('needs').hidden=true; player.healing = 0; jumpHeight = verticalSpeed = landingDip = 0; player.airborne = false; resetInput(); if (document.exitPointerLock) document.exitPointerLock();
     $('title').textContent = 'They got you'; $('blurb').textContent = `You put down ${player.kills} before the avenue took you.`; $('go').textContent = 'Go again'; $('veil').hidden = false;
     for (const id of ['touch', 'fire', 'reload', 'flashlight', 'aim', 'sprint', 'heal', 'jump', 'crouch', 'swap', 'stick', 'cross']) $(id).hidden = true; fp.visible = false;
   }
   updateLoot(dt);
   if (shotQueued && sprintBlend <= 0.08) fire();
-  else if (game.firing) fire(true);
+  else if (game.firing || padFire) fire(true);
   $('hpfill').style.width = clamp(player.hp, 0, 100) + '%'; updateMeds();
   updateAmmo();
 }
@@ -361,4 +370,54 @@ function updatePlayer(dt) {
 // main.js hands over each weapon's prepared model and the arm rig posed for it.
 function installWeapon(id, model, arms) { held[id].gun.add(model); held[id].group.add(arms); }
 
-export { installWeapon, fp, gun, held, pickups, fire, reload, heal, begin, selectWeapon, updatePlayer };
+export { installWeapon, fp, gun, held, pickups, fire, reload, heal, begin, selectWeapon, updatePlayer, pollController };
+
+const setInventoryOpen=installInventoryUI({resetInput,heal});
+const controller=createController(),padMove={x:0,y:0};
+let padAim=false,padFire=false,hadController=false,lastControllerContext=null;
+const touchControls=['touch','fire','reload','flashlight','aim','sprint','heal','jump','crouch','swap'];
+function controllerMode(active){
+ if(!!game.controllerMode===active)return;
+ resetInput();game.controllerMode=active;
+ for(const id of touchControls)$(id).hidden=active||!game.touchMode||!game.started;
+ $('controller-hint').hidden=!active||!game.started;
+ $('bag').textContent=active?'PACK · MENU':'PACK · I';
+}
+// A real touch/key action takes priority over a resting controller.
+addEventListener('touchstart',()=>{game.touchMode=true;controllerMode(false);controller.suspend();},{passive:true,capture:true});
+addEventListener('keydown',()=>{controllerMode(false);controller.suspend();});
+canvas.addEventListener('mousedown',()=>{controllerMode(false);controller.suspend();});
+function pollController(dt){
+ const context=game.inventoryOpen?'inventory':game.started&&!game.dead?'play':'title';
+ if(lastControllerContext!==null&&lastControllerContext!==context){controller.suspend();resetInput();}
+ lastControllerContext=context;
+ let pads=[];try{pads=globalThis.navigator?.getGamepads?.()||[];}catch{/* API may be blocked by an embedding host. */}
+ const sample=controller.sample(pads,dt,!document.hidden&&(document.hasFocus?.()??true));
+ const status=$('controller-status');
+ if(status)status.textContent=sample.connected?'Controller ready · A / × to start · Menu opens inventory':sample.unsupported?'Controller detected, but this browser has no standard mapping. Use touch or keyboard.':'Controller: connect and press a button to detect it.';
+ if(!sample.connected){
+  if(hadController&&game.controllerMode){controllerMode(false);if(game.started&&!game.dead)setInventoryOpen(true);}
+  hadController=false;return;
+ }
+ hadController=true;
+ if(sample.blocked){padMove.x=padMove.y=0;padAim=padFire=false;return;}
+ if(sample.active)controllerMode(true);
+ if(!game.controllerMode)return;
+ const {buttons:b,edge:e}=sample;
+ $('controller-hint').hidden=!game.started||game.inventoryOpen;
+ if(!game.started||game.dead){padMove.x=padMove.y=0;padAim=padFire=false;if((e[0]||e[9])&&game.ready){begin();controller.suspend();}return;}
+ if(e[9]||e[8]){setInventoryOpen(!game.inventoryOpen);controller.suspend();return;}
+ if(game.inventoryOpen){
+  padMove.x=padMove.y=0;padAim=padFire=false;
+  $('pack-message').textContent='D-pad / left stick: select · A / ×: use · B / ○: close';
+  if(e[1]){setInventoryOpen(false);controller.suspend();return;}
+  inventoryController(sample.navigate,e[0]);return;
+ }
+ padMove.x=sample.move.x;padMove.y=sample.move.y;padAim=b[6];padFire=b[7];
+ const scale=lookScale(),curve=v=>Math.sign(v)*Math.pow(Math.abs(v),1.45);
+ player.yaw-=curve(sample.look.x)*2.4*dt*scale;
+ player.pitch=clamp(player.pitch-curve(sample.look.y)*1.8*dt*scale,-1.3,1.3);
+ if(e[0])jump();if(e[1])toggleCrouch();if(e[2])reload();if(e[3])selectWeapon(nextWeapon());
+ if(e[5])interact();if(e[10])toggleSprint();if(e[12])toggleTorch();if(e[13])heal();
+ if(e[7])fire();
+}

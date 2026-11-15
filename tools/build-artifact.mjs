@@ -15,4 +15,5 @@ for (const name of ['walker', 'makarov', 'weapons/ak47', 'city-zombie']) {
   fs.writeFileSync('dist/' + name + '-data.js', '// Embedded glTF model.\nexport default ' + JSON.stringify(fs.readFileSync('assets/' + name + '.glb').toString('base64')) + ';\n');
 }
 if (fs.existsSync('assets/audio')) fs.cpSync('assets/audio', 'dist/assets/audio', { recursive: true });
+if (fs.existsSync('assets/icons')) fs.cpSync('assets/icons', 'dist/assets/icons', { recursive: true });
 console.log('dist/ ready');
