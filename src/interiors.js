@@ -1,3 +1,4 @@
+import { chooseLoot } from './inventory.js';
 // Enterable shop interiors.
 import * as THREE from 'three';
 import { rnd, rr, ri, pick, col } from './util.js';
@@ -14,7 +15,7 @@ function shopInterior(F, width, door, block, type) {
   fb(B.int, F, 0, 0.4, FL, CE, -Dp, -0.5, wallC); fb(B.int, F, width - 0.4, width, FL, CE, -Dp, -0.5, wallC); fb(B.int, F, 0, width, FL, CE, -Dp - 0.4, -Dp, wallC);
   fb(B.int, F, 0.4, width - 0.4, FL, FL + 0.12, -Dp + 0.0, -Dp + 0.03, DIM(0x3a3632));
   for (let a = 2; a < width - 2; a += 3.2) fb(B.int, F, a, a + 1.3, CE - 0.07, CE, -Dp + 2, -Dp + 2.3, DIM(0xd8d8d0)), fb(B.int, F, a, a + 1.3, CE - 0.07, CE, -5, -4.7, DIM(0xd8d8d0)); // dead strip lights
-  const loot = p => pickSpots.push(Object.assign(p, { kind: rnd() < (type.medkit || 0) ? 'medkit' : 'ammo' })); // the kind rides on the Vector3
+  const loot = p => pickSpots.push(Object.assign(p, { kind: chooseLoot(type, rnd()) })); // the kind rides on the Vector3
   const circ = (a, d, r, h) => { const p = w2(a, d); circles.push({ x: p.x, z: p.z, r, h }); };
   // chiller cabinets along the back wall
   if (type.chillers) for (let a = 0.6; a + 1.1 < width - 0.6; a += 1.15) {

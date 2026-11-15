@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import * as THREE from 'three';
 import { MOVEMENT, LOOT, MEDKIT, PLAYER_CONTROL, WEAPONS, START_WEAPON, WEAPON_SWITCH, AMMO_BOX_WEAPON } from '../src/data.js';
+import { ITEMS, itemCount, collectItem, updateSurvival, newSupplies } from '../src/inventory.js';
 import { createPlayer, newArsenal } from '../src/state.js';
 function setup(pickSpots = []) {
  const elements=new Map(),events={};
@@ -12,7 +13,7 @@ function setup(pickSpots = []) {
  const game={ready:true,started:false,dead:false,touchMode:true,firing:false};
  const camera=new THREE.PerspectiveCamera(),scene=new THREE.Scene();
  const sounds=[];
- const context={MEDKIT,PLAYER_CONTROL,LOOT,MOVEMENT,WEAPONS,START_WEAPON,WEAPON_SWITCH,AMMO_BOX_WEAPON,newArsenal,THREE,player,game,camera,scene,canvas:el('view'),$:el,rnd:()=>0.5,clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),
+ const context={ITEMS,itemCount,collectItem,updateSurvival,newSupplies,installInventoryUI:()=>{},updateInventoryUI:()=>{},buildLoot:()=>{const m=new THREE.Group();m.material={};return m;},MEDKIT,PLAYER_CONTROL,LOOT,MOVEMENT,WEAPONS,START_WEAPON,WEAPON_SWITCH,AMMO_BOX_WEAPON,newArsenal,THREE,player,game,camera,scene,canvas:el('view'),$:el,rnd:()=>0.5,clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),
  AMMO_BOX:12,pickSpots,zombies:[],clock:{elapsedTime:0},
  groundY:()=>0,roomAt:()=>null,collide:()=>{},rayWorld:()=>140,hitZombieVisual:()=>{},placeZombie:()=>{},audioStart:()=>{},
  sfx:{medkit(){},dry(){},shot(){sounds.push('shot');},rifle(){sounds.push('rifle');},swap(){},reload(){},thud(){},jump(){},land(){},pickup(){},voice(){},stopVoice(){}},mkCanvas:()=>({getContext:()=>({createRadialGradient:()=>({addColorStop(){}}),fillRect(){}})}),
@@ -305,4 +306,15 @@ test('dying and going again resets both weapons and returns to the pistol',()=>{
  assert.equal(api.held.makarov.group.visible,true);assert.equal(api.held.ak47.group.visible,false);
  game.dead=false;player.hp=-1;api.updatePlayer(.01);api.selectWeapon('ak47');player.hp=-1;api.updatePlayer(.05);api.begin();
  assert.equal(player.weapon,'makarov');assert.equal(player.switching,0);
+});
+
+test('backpack pause blocks movement, shots, pickup and survival drain; resume restores simulation',()=>{
+ const {api,player,game,events}=setup();api.begin();game.inventoryOpen=true;
+ events.keydown.forEach(f=>f({code:'KeyW'}));const before={z:player.z,hunger:player.hunger,ammo:player.ammo};
+ api.fire();api.jump();api.updatePlayer(10);assert.equal(player.z,before.z);assert.equal(player.hunger,before.hunger);assert.equal(player.ammo,before.ammo);
+ game.inventoryOpen=false;api.updatePlayer(1);assert.ok(player.hunger<before.hunger);
+});
+test('death restart replenishes needs and resets collected consumables',()=>{
+ const {api,player}=setup();api.begin();player.hunger=3;player.thirst=5;player.supplies.food=0;player.hp=0;
+ api.updatePlayer(.01);api.begin();assert.equal(player.hunger,100);assert.equal(player.thirst,100);assert.deepEqual(player.supplies,{food:1,water:1});
 });

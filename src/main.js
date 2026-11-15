@@ -18,9 +18,11 @@ let idleT = 0;
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   if (!game.started && !game.dead) { idleT += dt; player.yaw = Math.sin(idleT * 0.12) * 0.22; player.pitch = 0.05; }
-  updatePlayer(dt);
-  updateNavigation();
-  for (const z of zombies) updateZombie(z, dt);
+  if(!game.inventoryOpen && !document.hidden) {
+    updatePlayer(dt);
+    updateNavigation();
+    for (const z of zombies) updateZombie(z, dt);
+  }
   sky.position.copy(camera.position);
   const tx = Math.round(player.x / 2) * 2, tz = Math.round(player.z / 2) * 2;
   sun.target.position.set(tx, 0, tz - 10); sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 260);

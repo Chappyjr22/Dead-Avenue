@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import {createPlayer} from '../src/state.js';
+import {ITEMS,itemCount,consumeItem} from '../src/inventory.js';
+test('backpack opens only during play, uses supplies, closes for healing, and clears controls',()=>{
+ const nodes=new Map(),events=[];let resets=0,heals=0;
+ const $=id=>{if(!nodes.has(id))nodes.set(id,{hidden:true,handlers:{},classList:{toggle(){}},setAttribute(){},focus(){},addEventListener(n,f){this.handlers[n]=f;},querySelectorAll(){return [];}});return nodes.get(id);};
+ const player=createPlayer(),game={started:false,dead:false,inventoryOpen:false};
+ const context={player,game,ITEMS,itemCount,consumeItem,$,document:{exitPointerLock(){}},addEventListener(n,f){events.push(f);}};
+ const src=fs.readFileSync(new URL('../src/inventory-ui.js',import.meta.url),'utf8').replace(/^import .*;$/gm,'').replace(/export function/g,'function');
+ vm.runInNewContext(src+';globalThis.install=installInventoryUI;',context);
+ context.install({resetInput(){resets++;},heal(){heals++;}});
+ $('bag').handlers.click();assert.equal(game.inventoryOpen,false);
+ game.started=true;$('bag').handlers.click();assert.equal(game.inventoryOpen,true);assert.equal($('inventory').hidden,false);
+ player.hunger=50;$('use-food').handlers.click();assert.equal(player.hunger,85);assert.equal(player.supplies.food,0);assert.equal($('use-food').disabled,true);
+ player.hp=50;$('use-medkit').handlers.click();assert.equal(heals,1);assert.equal(game.inventoryOpen,false);
+ events[0]({code:'KeyI',preventDefault(){}});assert.equal(game.inventoryOpen,true);
+ events[0]({code:'Escape',preventDefault(){}});assert.equal(game.inventoryOpen,false);assert.equal(resets,4);
+});
